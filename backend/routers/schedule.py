@@ -1,6 +1,6 @@
 from __future__ import annotations
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from auth import verify_token
 from db import get_db
 from scheduler import crea_gironi_bilanciati, generate_schedule
@@ -54,6 +54,7 @@ def _load_teams_from_firestore(db, tournament_id: str) -> dict:
 
 @router.post("/generate-schedule")
 async def generate_schedule_endpoint(
+    request: Request,
     tournament_id: str,
     user: dict = Depends(verify_token),
     db=Depends(get_db),

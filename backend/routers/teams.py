@@ -1,6 +1,6 @@
 from __future__ import annotations
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from auth import verify_token
 from db import get_db
 from models import TeamRegister, AvailabilitySlot
@@ -11,6 +11,7 @@ router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["teams"])
 
 @router.post("/teams", status_code=201)
 async def register_team(
+    request: Request,
     tournament_id: str,
     payload: TeamRegister,
     user: dict = Depends(verify_token),
@@ -57,6 +58,7 @@ async def register_team(
 
 @router.put("/teams/{team_id}/availability")
 async def update_availability(
+    request: Request,
     tournament_id: str,
     team_id: str,
     slots: list[AvailabilitySlot],
