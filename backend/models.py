@@ -43,7 +43,7 @@ class TeamRegister(BaseModel):
 
 
 class AvailabilitySlot(BaseModel):
-    slot_id: str  # formato: "YYYY-MM-DD_HH" oppure indice numerico come stringa
+    slot_id: str  # formato: "{giorno}_{slot}" con indici 0-based, es. "0_0", "2_1"
     available: bool
 
 

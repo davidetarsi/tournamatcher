@@ -1,15 +1,18 @@
-from __future__ import annotations
 import uuid
-from fastapi import APIRouter, Depends
+from typing import Optional
+from fastapi import APIRouter, Depends, Request
 from auth import verify_token
 from db import get_db
+from limiter import limiter
 from models import TournamentCreate
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
 @router.post("", status_code=201)
+@limiter.limit("10/minute")
 async def create_tournament(
+    request: Request,
     payload: TournamentCreate,
     user: dict = Depends(verify_token),
     db=Depends(get_db),

@@ -1,8 +1,8 @@
-from __future__ import annotations
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from auth import verify_token
 from db import get_db
+from limiter import limiter
 from scheduler import crea_gironi_bilanciati, generate_schedule
 
 router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["schedule"])
@@ -53,6 +53,7 @@ def _load_teams_from_firestore(db, tournament_id: str) -> dict:
 
 
 @router.post("/generate-schedule")
+@limiter.limit("3/minute")
 async def generate_schedule_endpoint(
     request: Request,
     tournament_id: str,

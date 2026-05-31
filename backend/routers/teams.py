@@ -1,15 +1,23 @@
-from __future__ import annotations
 import uuid
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from auth import verify_token
 from db import get_db
+from limiter import limiter
 from models import TeamRegister, AvailabilitySlot
 from schema_engine import build_team_model, sanitize
 
 router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["teams"])
 
 
+class TeamUpdate(BaseModel):
+    forza: Optional[int] = None       # 1-5, set by admin
+    confirmed: Optional[bool] = None  # admin confirms team
+
+
 @router.post("/teams", status_code=201)
+@limiter.limit("5/minute")
 async def register_team(
     request: Request,
     tournament_id: str,
@@ -57,11 +65,12 @@ async def register_team(
 
 
 @router.put("/teams/{team_id}/availability")
+@limiter.limit("30/minute")
 async def update_availability(
     request: Request,
     tournament_id: str,
     team_id: str,
-    slots: list[AvailabilitySlot],
+    slots: List[AvailabilitySlot],
     user: dict = Depends(verify_token),
     db=Depends(get_db),
 ):
@@ -91,3 +100,31 @@ async def update_availability(
     write_batch.commit()
 
     return {"updated": len(slots)}
+
+
+@router.patch("/teams/{team_id}")
+@limiter.limit("20/minute")
+async def update_team(
+    request: Request,
+    tournament_id: str,
+    team_id: str,
+    payload: TeamUpdate,
+    user: dict = Depends(verify_token),
+    db=Depends(get_db),
+):
+    """Admin-only: set forza and/or confirmed status for a team."""
+    tournament_ref = (
+        db.collection("tournaments").document(tournament_id)
+    )
+    tournament = tournament_ref.get()
+    if not tournament.exists or tournament.to_dict().get("admin_uid") != user["uid"]:
+        raise HTTPException(403, "Solo l'admin può aggiornare la squadra")
+
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if not update_data:
+        raise HTTPException(400, "Nessun campo da aggiornare")
+
+    (
+        tournament_ref.collection("teams").document(team_id).update(update_data)
+    )
+    return {"updated": list(update_data.keys())}

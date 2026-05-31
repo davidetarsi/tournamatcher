@@ -57,8 +57,8 @@ def test_update_availability_returns_200(client, mock_db):
     mock_db.batch.return_value = MagicMock()
 
     slots_payload = [
-        {"slot_id": "2026-06-10_14", "available": True},
-        {"slot_id": "2026-06-10_16", "available": False},
+        {"slot_id": "0_0", "available": True},
+        {"slot_id": "0_1", "available": False},
     ]
 
     with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
@@ -95,7 +95,7 @@ def test_update_availability_replaces_old_slots(client, mock_db):
     with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
         response = client.put(
             f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
-            json=[{"slot_id": "2026-06-10_14", "available": True}],
+            json=[{"slot_id": "0_0", "available": True}],
             headers={"Authorization": "Bearer fake.token"},
         )
 
@@ -115,7 +115,40 @@ def test_update_availability_wrong_owner_returns_403(client, mock_db):
     with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
         response = client.put(
             f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
-            json=[{"slot_id": "2026-06-10_14", "available": True}],
+            json=[{"slot_id": "0_0", "available": True}],
+            headers={"Authorization": "Bearer fake.token"},
+        )
+
+    assert response.status_code == 403
+
+
+def test_update_team_strength_as_admin_returns_200(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "team-owner-uid"}
+    mock_db.collection.return_value.document.return_value.get.return_value = tournament_doc
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.patch(
+            f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}",
+            json={"forza": 5, "confirmed": True},
+            headers={"Authorization": "Bearer fake.token"},
+        )
+
+    assert response.status_code == 200
+    assert "forza" in response.json()["updated"]
+
+
+def test_update_team_non_admin_returns_403(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "other-admin-uid"}  # not FAKE_TOKEN
+    mock_db.collection.return_value.document.return_value.get.return_value = tournament_doc
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.patch(
+            f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}",
+            json={"forza": 5},
             headers={"Authorization": "Bearer fake.token"},
         )
 

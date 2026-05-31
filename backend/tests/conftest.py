@@ -20,3 +20,9 @@ def mock_firebase(monkeypatch):
 @pytest.fixture
 def mock_db(mock_firebase):
     return mock_firebase
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiter(monkeypatch):
+    """Disable slowapi rate limiting in tests (TestClient IP causes key errors)."""
+    from limiter import limiter
+    monkeypatch.setattr(limiter, "enabled", False)
