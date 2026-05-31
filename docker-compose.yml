@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - FIREBASE_SERVICE_ACCOUNT_KEY=/run/secrets/firebase_key
+    secrets:
+      - firebase_key
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    user: "1000:1000"
+
+secrets:
+  firebase_key:
+    file: ./serviceAccountKey.json
