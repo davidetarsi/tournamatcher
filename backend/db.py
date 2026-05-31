@@ -16,8 +16,12 @@ def _init():
     if _app is None:
         key_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_KEY")
         cred = credentials.Certificate(key_path)
-        _app = firebase_admin.initialize_app(cred)
-        firestore_client = firestore.client()
+        try:
+            _app = firebase_admin.initialize_app(cred)
+            firestore_client = firestore.client()
+        except Exception:
+            _app = None  # reset so next call retries
+            raise
 
 
 def get_db():
