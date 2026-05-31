@@ -38,12 +38,26 @@ def test_generate_schedule_returns_all_matches():
     assert total_matches == 2
 
 def test_generate_schedule_respects_availability():
-    # Leoni non disponibile giorno 0 slot 0 → nessuna partita con Leoni in quello slot
+    # Leoni non disponibile giorno 2 slot 0 → nessuna partita con Leoni in quel slot
     gironi = [["Leoni", "Tori"], ["Aquile", "Draghi"]]
     result = generate_schedule(gironi, TEAMS, num_giorni=3, num_slots=2)
-    if result and 0 in result and 0 in result[0]:
-        for match in result[0][0]:
-            assert "Leoni" not in match["squadre"]
+    assert result is not None
+
+    # Find Leoni's actual match in the calendar
+    leoni_slots = [
+        (g, s)
+        for g, slots in result.items()
+        for s, matches in slots.items()
+        for match in matches
+        if "Leoni" in match["squadre"]
+    ]
+    assert len(leoni_slots) == 1  # Leoni plays exactly once
+
+    leoni_day, leoni_slot = leoni_slots[0]
+    # Verify Leoni was available at the assigned slot
+    assert TEAMS["Leoni"]["disponibilita"][leoni_day][leoni_slot] == 1, (
+        f"Leoni scheduled at day {leoni_day} slot {leoni_slot} but was unavailable"
+    )
 
 def test_generate_schedule_returns_none_if_infeasible():
     teams_no_overlap = {
