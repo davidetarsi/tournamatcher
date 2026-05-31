@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /tournaments/{tId} {
+      allow read: if isAdmin(tId) || isConfirmedTeam(tId);
+      allow write: if false;
+
+      match /config/{doc} {
+        allow read: if isAuthenticated();
+        allow write: if false;
+      }
+
+      match /teams/{teamId} {
+        allow read: if isAdmin(tId) || isOwner(tId, teamId);
+        allow write: if false;
+
+        match /availability_slots/{slotId} {
+          allow read: if isOwner(tId, teamId);
+          allow write: if false;
+        }
+
+        match /players/{playerId} {
+          allow read: if isOwner(tId, teamId);
+          allow write: if false;
+        }
+      }
+
+      match /matches/{matchId} {
+        allow read: if isConfirmedTeam(tId) || isPublic(tId);
+        allow write: if false;
+      }
+    }
+
+    function isAuthenticated() { return request.auth != null; }
+    function isAdmin(tId) {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/tournaments/$(tId))
+          .data.admin_uid == request.auth.uid;
+    }
+    function isOwner(tId, teamId) {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/tournaments/$(tId)/teams/$(teamId))
+          .data.owner_uid == request.auth.uid;
+    }
+    function isConfirmedTeam(tId) {
+      // Verifica base auth. Stato confermato verificato in FastAPI.
+      return isAuthenticated();
+    }
+    function isPublic(tId) {
+      return get(/databases/$(database)/documents/tournaments/$(tId))
+        .data.public == true;
+    }
+  }
+}
