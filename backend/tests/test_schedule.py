@@ -58,8 +58,9 @@ def test_generate_schedule_success(client, mock_db):
     tournament_ref.collection.return_value.where.return_value.stream.return_value = teams
     tournament_ref.update = MagicMock()
 
+    mock_batch = MagicMock()
     mock_db.collection.return_value.document.return_value = tournament_ref
-    mock_db.batch.return_value = MagicMock()
+    mock_db.batch.return_value = mock_batch
 
     with patch("auth.firebase_auth.verify_id_token", return_value=ADMIN_TOKEN):
         response = client.post(
@@ -68,7 +69,13 @@ def test_generate_schedule_success(client, mock_db):
         )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "generated"
+    data = response.json()
+    assert data["status"] == "generated"
+    assert data["matches"] > 0  # scheduler must have produced matches
+
+    # Verify Firestore side-effects
+    mock_batch.commit.assert_called_once()  # batch write happened
+    tournament_ref.update.assert_called_once_with({"status": "scheduled"})  # status updated
 
 def test_generate_schedule_non_admin_returns_403(client, mock_db):
     tournament_doc = MagicMock()
