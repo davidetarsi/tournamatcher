@@ -73,10 +73,19 @@ async def update_availability(
     if not team_doc.exists or team_doc.get("owner_uid") != user["uid"]:
         raise HTTPException(403, "Non autorizzato")
 
-    batch = db.batch()
     slots_col = team_ref.collection("availability_slots")
+
+    # Delete all existing slots first (replace-all semantics for PUT)
+    existing = slots_col.stream()
+    delete_batch = db.batch()
+    for doc in existing:
+        delete_batch.delete(doc.reference)
+    delete_batch.commit()
+
+    # Write new slots
+    write_batch = db.batch()
     for slot in slots:
-        batch.set(slots_col.document(slot.slot_id), slot.model_dump())
-    batch.commit()
+        write_batch.set(slots_col.document(slot.slot_id), slot.model_dump())
+    write_batch.commit()
 
     return {"updated": len(slots)}

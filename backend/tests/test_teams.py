@@ -49,6 +49,11 @@ def test_update_availability_returns_200(client, mock_db):
     mock_db.collection.return_value.document.return_value \
         .collection.return_value.document.return_value.get.return_value = team_doc
 
+    # Mock stream() for delete phase (slots_col is one .collection deeper than team_ref)
+    mock_db.collection.return_value.document.return_value \
+        .collection.return_value.document.return_value \
+        .collection.return_value.stream.return_value = []  # no existing slots
+
     mock_db.batch.return_value = MagicMock()
 
     slots_payload = [
@@ -64,6 +69,41 @@ def test_update_availability_returns_200(client, mock_db):
         )
 
     assert response.status_code == 200
+    assert response.json()["updated"] == 2
+
+
+def test_update_availability_replaces_old_slots(client, mock_db):
+    """PUT replaces ALL slots, not just the submitted ones."""
+    team_doc = MagicMock()
+    team_doc.exists = True
+    team_doc.get.return_value = "team-owner-uid"
+    mock_db.collection.return_value.document.return_value \
+        .collection.return_value.document.return_value.get.return_value = team_doc
+
+    # Simulate 3 existing slots that should be deleted.
+    # slots_col = team_ref.collection("availability_slots") resolves to:
+    # mock_db.collection.rv.document.rv.collection.rv.document.rv.collection.rv
+    old_slot = MagicMock()
+    old_slot.reference = MagicMock()
+    mock_db.collection.return_value.document.return_value \
+        .collection.return_value.document.return_value \
+        .collection.return_value.stream.return_value = [old_slot, old_slot, old_slot]
+
+    mock_batch = MagicMock()
+    mock_db.batch.return_value = mock_batch
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.put(
+            f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
+            json=[{"slot_id": "2026-06-10_14", "available": True}],
+            headers={"Authorization": "Bearer fake.token"},
+        )
+
+    assert response.status_code == 200
+    # Verify delete was called for each old slot (3 times)
+    assert mock_batch.delete.call_count == 3
+    # Verify commit was called twice (delete batch + write batch)
+    assert mock_batch.commit.call_count == 2
 
 def test_update_availability_wrong_owner_returns_403(client, mock_db):
     team_doc = MagicMock()
