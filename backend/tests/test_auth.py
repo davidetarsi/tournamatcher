@@ -14,7 +14,7 @@ async def test_valid_token_returns_decoded():
         assert result["uid"] == "user-123"
 
 @pytest.mark.asyncio
-async def test_missing_bearer_prefix_raises_401():
+async def test_invalid_token_raises_401():
     with patch("auth.firebase_auth.verify_id_token", side_effect=Exception("bad token")):
         with pytest.raises(HTTPException) as exc:
             await verify_token(authorization="invalid-token")
