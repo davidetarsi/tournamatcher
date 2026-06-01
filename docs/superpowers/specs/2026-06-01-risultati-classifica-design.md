@@ -88,7 +88,7 @@ Due campi nuovi nel documento `tournaments/{id}/config/schema`:
 - `draws_allowed: false` per basket — nasconde la colonna P ovunque nell'UI
 - Valori default: calcio → `win:3, draw:1, loss:0, draws_allowed:true`; basket → `win:2, draw:0, loss:0, draws_allowed:false`
 - L'admin modifica questi valori dallo `SchemaEditor` esistente
-- `tiebreaker_rules` è una lista ordinata; `head_to_head` è l'ultimo resort
+- tiebreaker_rules è una lista ordinata. Nota algoritmica obbligatoria: l'implementazione di head_to_head non deve limitarsi al confronto a due. In caso di parità tra 3 o più squadre, deve instanziare una "classifica avulsa" (mini-girone) calcolando punti e differenza reti esclusivamente sui match giocati tra le squadre coinvolte nel tiebreaker.
 
 ---
 
@@ -136,7 +136,7 @@ def compute_and_cache_standings(db, tournament_id: str) -> None:
     # Legge schema (points_system, tiebreaker_rules)
     # Legge tutti i match e le squadre
     # Chiama compute_standings()
-    # Scrive ogni gruppo su standings/{groupId} via Admin SDK batch
+    # Apre una Transazione Firestore: legge tutti i match, calcola le classifiche e scrive su standings/{groupId} all'interno della stessa transazione per garantire consistenza assoluta in caso di inserimenti simultanei.
 ```
 
 ### `backend/models.py` — aggiunte
@@ -230,7 +230,11 @@ export async function submitResult(
 
 **File:** `frontend/app/t/[id]/team/[teamId]/page.tsx`
 
-Accessibile tramite link diretto. Nessuna auth richiesta in Plan C (il meccanismo di autenticazione per le squadre arriva con la registrazione in Plan D).
+Accessibile tramite link diretto. Nessuna auth richiesta in Plan C. Le Firestore Security Rules devono essere aggiornate:
+- `matches/{matchId}` → `allow read: if true` (punteggi visibili senza auth)
+- `standings/{groupId}` → `allow read: if true` (classifica visibile senza auth)
+- `teams/{teamId}` → invariato, resta protetto da `isOwner()` (dati squadra non esposti)
+Le scritture rimangono `allow write: if false` su tutte le collezioni.
 
 **Contenuto:**
 - Mini-riepilogo: `3V · 1P · 2S` (calcolato da onSnapshot su matches/)
