@@ -2,7 +2,7 @@ from __future__ import annotations
 from models import StandingsEntry
 
 DEFAULT_POINTS_SYSTEM = {"win": 3, "draw": 1, "loss": 0, "draws_allowed": True}
-DEFAULT_TIEBREAKER_RULES = ["goal_difference", "goals_for", "head_to_head"]
+DEFAULT_TIEBREAKER_RULES = ("goal_difference", "goals_for", "head_to_head")
 
 
 def compute_standings(
