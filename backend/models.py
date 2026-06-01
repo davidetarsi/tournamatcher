@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
 
@@ -20,6 +20,13 @@ class AdminControls(BaseModel):
     max_teams: int
 
 
+class PointsSystem(BaseModel):
+    win: int = 3
+    draw: int = 1
+    loss: int = 0
+    draws_allowed: bool = True
+
+
 class SchemaConfig(BaseModel):
     sport: str
     max_teams: int
@@ -29,6 +36,10 @@ class SchemaConfig(BaseModel):
     team_fields: list[TeamField]
     player_fields: list[TeamField]
     admin_controls: AdminControls
+    points_system: PointsSystem = Field(default_factory=PointsSystem)
+    tiebreaker_rules: list[str] = Field(
+        default_factory=lambda: ["goal_difference", "goals_for", "head_to_head"]
+    )
 
 
 class TournamentCreate(BaseModel):
@@ -37,15 +48,33 @@ class TournamentCreate(BaseModel):
 
 
 class TeamRegister(BaseModel):
-    # Campi base sempre presenti; i campi dinamici vengono validati separatamente
     invite_code: Optional[str] = None
-    fields: dict  # validato con build_team_model a runtime
+    fields: dict
 
 
 class AvailabilitySlot(BaseModel):
-    slot_id: str  # formato: "{giorno}_{slot}" con indici 0-based, es. "0_0", "2_1"
+    slot_id: str
     available: bool
 
 
 class ScheduleRequest(BaseModel):
     tournament_id: str
+
+
+class MatchResult(BaseModel):
+    home_goals: int = Field(ge=0)
+    away_goals: int = Field(ge=0)
+
+
+class StandingsEntry(BaseModel):
+    team_id: str
+    team_name: str
+    played: int
+    wins: int
+    draws: int
+    losses: int
+    goals_for: int
+    goals_against: int
+    goal_difference: int
+    points: int
+    position: int
