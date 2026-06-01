@@ -31,8 +31,12 @@ export function TeamTable({ tournamentId }: Props) {
   }, [tournamentId])
 
   const handlePatch = async (teamId: string, data: { forza?: number; confirmed?: boolean }) => {
-    const token = await getToken()
-    await patchTeam(tournamentId, teamId, data, token)
+    try {
+      const token = await getToken()
+      await patchTeam(tournamentId, teamId, data, token)
+    } catch (e) {
+      console.error('Failed to update team:', e)
+    }
   }
 
   if (teams.length === 0) return <p>Nessuna squadra registrata.</p>
