@@ -36,3 +36,16 @@ export async function updateSchema(tId: string, schema: TournamentSchema, token:
     body: JSON.stringify(schema),
   })
 }
+
+export async function submitResult(
+  tournamentId: string,
+  matchId: string,
+  data: { home_goals: number; away_goals: number },
+  token: string
+): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(
+    `/tournaments/${tournamentId}/matches/${matchId}/result`,
+    token,
+    { method: 'POST', body: JSON.stringify(data) }
+  )
+}
