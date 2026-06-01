@@ -25,6 +25,7 @@ export function SchemaEditor({ tournamentId }: Props) {
   const [fields, setFields] = useState<SchemaField[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const { getToken } = useFirebaseToken()
 
   useEffect(() => {
@@ -48,10 +49,13 @@ export function SchemaEditor({ tournamentId }: Props) {
     if (!schema) return
     setSaving(true)
     setSaved(false)
+    setSaveError(null)
     try {
       const token = await getToken()
       await updateSchema(tournamentId, { ...schema, team_fields: fields }, token)
       setSaved(true)
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Errore durante il salvataggio')
     } finally {
       setSaving(false)
     }
@@ -88,6 +92,7 @@ export function SchemaEditor({ tournamentId }: Props) {
         </Button>
         {saved && <span className="text-green-600 text-sm">Salvato!</span>}
       </div>
+      {saveError && <p className="text-red-600 text-sm">{saveError}</p>}
     </div>
   )
 }
