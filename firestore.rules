@@ -2,58 +2,33 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    match /{document=**} {
-      allow read, write: if false;
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
     }
 
-    match /tournaments/{tId} {
-      allow read: if isAdmin(tId) || isConfirmedTeam(tId);
+    match /tournaments/{tournamentId} {
+      allow read: if request.auth != null;
       allow write: if false;
 
       match /config/{doc} {
-        allow read: if isAuthenticated();
+        allow read: if request.auth != null;
         allow write: if false;
       }
 
       match /teams/{teamId} {
-        allow read: if isAdmin(tId) || isOwner(tId, teamId);
+        allow read: if isOwner(resource.data.owner_uid);
         allow write: if false;
-
-        match /availability_slots/{slotId} {
-          allow read: if isOwner(tId, teamId);
-          allow write: if false;
-        }
-
-        match /players/{playerId} {
-          allow read: if isOwner(tId, teamId);
-          allow write: if false;
-        }
       }
 
       match /matches/{matchId} {
-        allow read: if isConfirmedTeam(tId) || isPublic(tId);
+        allow read: if true;
         allow write: if false;
       }
-    }
 
-    function isAuthenticated() { return request.auth != null; }
-    function isAdmin(tId) {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/tournaments/$(tId))
-          .data.admin_uid == request.auth.uid;
-    }
-    function isOwner(tId, teamId) {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/tournaments/$(tId)/teams/$(teamId))
-          .data.owner_uid == request.auth.uid;
-    }
-    function isConfirmedTeam(tId) {
-      // Verifica base auth. Stato confermato verificato in FastAPI.
-      return isAuthenticated();
-    }
-    function isPublic(tId) {
-      return get(/databases/$(database)/documents/tournaments/$(tId))
-        .data.public == true;
+      match /standings/{groupId} {
+        allow read: if true;
+        allow write: if false;
+      }
     }
   }
 }
