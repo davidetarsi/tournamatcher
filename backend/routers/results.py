@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
+from google.cloud.firestore import SERVER_TIMESTAMP
 from auth import verify_token
 from db import get_db
 from limiter import limiter
@@ -35,7 +36,6 @@ async def submit_result(
     if not match_ref.get().exists:
         raise HTTPException(404, "Partita non trovata")
 
-    from google.cloud.firestore import SERVER_TIMESTAMP
     match_ref.update({
         "home_goals": payload.home_goals,
         "away_goals": payload.away_goals,
