@@ -132,3 +132,96 @@ def test_multiple_groups():
     assert "A" in result and "B" in result
     assert {e.team_id for e in result["A"]} == {"A", "B"}
     assert {e.team_id for e in result["B"]} == {"C", "D"}
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — endpoint
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock, patch
+from fastapi.testclient import TestClient
+
+TOURNAMENT_ID = "t-123"
+MATCH_ID = "m-001"
+ADMIN_TOKEN = {"uid": "admin-uid", "email": "admin@test.com"}
+
+
+@pytest.fixture
+def client(mock_db):
+    from main import app
+    from db import get_db
+    app.dependency_overrides[get_db] = lambda: mock_db
+    return TestClient(app)
+
+
+def _make_tournament_ref(mock_db, admin_uid="admin-uid", draws_allowed=True):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": admin_uid}
+
+    schema_doc = MagicMock()
+    schema_doc.exists = True
+    schema_doc.to_dict.return_value = {
+        "points_system": {"win": 3, "draw": 1, "loss": 0, "draws_allowed": draws_allowed}
+    }
+
+    match_doc = MagicMock()
+    match_doc.exists = True
+
+    t_ref = MagicMock()
+    t_ref.get.return_value = tournament_doc
+    # config/schema and match doc alternating calls
+    t_ref.collection.return_value.document.return_value.get.side_effect = [
+        schema_doc,  # schema
+        match_doc,   # match
+    ]
+    t_ref.collection.return_value.document.return_value.update = MagicMock()
+
+    mock_db.collection.return_value.document.return_value = t_ref
+    return t_ref
+
+
+@patch("routers.results.compute_and_cache_standings")
+def test_submit_result_success(mock_compute, client, mock_db):
+    _make_tournament_ref(mock_db)
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=ADMIN_TOKEN):
+        resp = client.post(
+            f"/tournaments/{TOURNAMENT_ID}/matches/{MATCH_ID}/result",
+            json={"home_goals": 2, "away_goals": 1},
+            headers={"Authorization": "Bearer fake"},
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+    mock_compute.assert_called_once_with(mock_db, TOURNAMENT_ID)
+
+
+def test_submit_result_not_admin(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "admin-uid"}
+    t_ref = MagicMock()
+    t_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = t_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value={"uid": "other-uid"}):
+        resp = client.post(
+            f"/tournaments/{TOURNAMENT_ID}/matches/{MATCH_ID}/result",
+            json={"home_goals": 1, "away_goals": 0},
+            headers={"Authorization": "Bearer fake"},
+        )
+    assert resp.status_code == 403
+
+
+@patch("routers.results.compute_and_cache_standings")
+def test_submit_result_draw_not_allowed(mock_compute, client, mock_db):
+    _make_tournament_ref(mock_db, draws_allowed=False)
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=ADMIN_TOKEN):
+        resp = client.post(
+            f"/tournaments/{TOURNAMENT_ID}/matches/{MATCH_ID}/result",
+            json={"home_goals": 1, "away_goals": 1},
+            headers={"Authorization": "Bearer fake"},
+        )
+    assert resp.status_code == 422
+    mock_compute.assert_not_called()

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from limiter import limiter
-from routers import tournaments, teams, schedule
+from routers import tournaments, teams, schedule, results
 
 app = FastAPI(title="Tournament Manager API")
 app.state.limiter = limiter
@@ -12,6 +12,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(tournaments.router)
 app.include_router(teams.router)
 app.include_router(schedule.router)
+app.include_router(results.router)
 
 
 @app.get("/health")
