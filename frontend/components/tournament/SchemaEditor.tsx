@@ -4,7 +4,7 @@ import { doc, getDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useFirebaseToken } from '@/lib/hooks/useFirebaseToken'
 import { updateSchema } from '@/lib/api'
-import type { TournamentSchema, SchemaField } from '@/types/schema'
+import type { TournamentSchema, SchemaField, PointsSystem, TiebreakerRule } from '@/types/schema'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -27,6 +27,8 @@ export function SchemaEditor({ tournamentId }: Props) {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const { getToken } = useFirebaseToken()
+  const [ps, setPs] = useState<PointsSystem>({ win: 3, draw: 1, loss: 0, draws_allowed: true })
+  const [tiebreakerRules, setTiebreakerRules] = useState<TiebreakerRule[]>(['goal_difference', 'goals_for', 'head_to_head'])
 
   useEffect(() => {
     const ref = doc(db, 'tournaments', tournamentId, 'config', 'schema')
@@ -35,6 +37,8 @@ export function SchemaEditor({ tournamentId }: Props) {
         const s = snap.data() as TournamentSchema
         setSchema(s)
         setFields(s.team_fields)
+        if (s.points_system) setPs(s.points_system)
+        if (s.tiebreaker_rules) setTiebreakerRules(s.tiebreaker_rules as TiebreakerRule[])
       }
     })
   }, [tournamentId])
@@ -52,7 +56,7 @@ export function SchemaEditor({ tournamentId }: Props) {
     setSaveError(null)
     try {
       const token = await getToken()
-      await updateSchema(tournamentId, { ...schema, team_fields: fields }, token)
+      await updateSchema(tournamentId, { ...schema, team_fields: fields, points_system: ps, tiebreaker_rules: tiebreakerRules }, token)
       setSaved(true)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Errore durante il salvataggio')
@@ -85,6 +89,89 @@ export function SchemaEditor({ tournamentId }: Props) {
       </div>
 
       <AddFieldForm onAdd={addField} existingKeys={fields.map((f) => f.key)} />
+
+      <div className="space-y-4 border-t pt-4">
+        <h3 className="font-semibold text-sm">Sistema punti</h3>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Vittoria</label>
+            <Input
+              type="number"
+              min={0}
+              className="w-20"
+              value={ps.win}
+              onChange={(e) => setPs((p) => ({ ...p, win: parseInt(e.target.value) || 0 }))}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Pareggio</label>
+            <Input
+              type="number"
+              min={0}
+              className="w-20"
+              value={ps.draw}
+              disabled={!ps.draws_allowed}
+              onChange={(e) => setPs((p) => ({ ...p, draw: parseInt(e.target.value) || 0 }))}
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Sconfitta</label>
+            <Input
+              type="number"
+              min={0}
+              className="w-20"
+              value={ps.loss}
+              onChange={(e) => setPs((p) => ({ ...p, loss: parseInt(e.target.value) || 0 }))}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ps.draws_allowed}
+              onChange={(e) => setPs((p) => ({ ...p, draws_allowed: e.target.checked }))}
+            />
+            Pareggi consentiti
+          </label>
+        </div>
+        <div>
+          <h4 className="text-xs text-gray-500 mb-2">Regole spareggio (ordine applicazione)</h4>
+          <div className="space-y-1">
+            {tiebreakerRules.map((rule, idx) => (
+              <div key={rule} className="flex items-center gap-2 text-sm">
+                <span className="w-36">{rule.replace(/_/g, ' ')}</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={idx === 0}
+                  onClick={() =>
+                    setTiebreakerRules((r) => {
+                      const n = [...r]
+                      ;[n[idx - 1], n[idx]] = [n[idx], n[idx - 1]]
+                      return n
+                    })
+                  }
+                >
+                  ↑
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={idx === tiebreakerRules.length - 1}
+                  onClick={() =>
+                    setTiebreakerRules((r) => {
+                      const n = [...r]
+                      ;[n[idx], n[idx + 1]] = [n[idx + 1], n[idx]]
+                      return n
+                    })
+                  }
+                >
+                  ↓
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div className="flex items-center gap-3">
         <Button onClick={handleSave} disabled={saving}>
