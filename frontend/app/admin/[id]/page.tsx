@@ -18,7 +18,7 @@ export default function DashboardPage({ params }: { params: { id: string } }) {
   if (loading) return <div className="p-6">Caricamento...</div>
   if (!tournament) return <div className="p-6">Torneo non trovato.</div>
 
-  const ps: PointsSystem = (tournament as any).points_system ?? DEFAULT_PS
+  const ps: PointsSystem = tournament.points_system ?? DEFAULT_PS
 
   return (
     <main className="container mx-auto p-6">

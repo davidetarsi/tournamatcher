@@ -45,6 +45,7 @@ export interface Tournament {
   admin_uid: string
   public: boolean
   status: 'draft' | 'scheduled'
+  points_system?: PointsSystem
 }
 
 export interface Team {
