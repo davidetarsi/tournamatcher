@@ -60,6 +60,8 @@ export function TournamentWizard() {
             team_fields: tmpl.team_fields,
             player_fields: [],
             admin_controls: { can_set_strength: true, max_teams: maxTeams },
+            points_system: { win: 3, draw: 1, loss: 0, draws_allowed: true },
+            tiebreaker_rules: ['goal_difference', 'goals_for', 'head_to_head'],
           },
         },
         token
