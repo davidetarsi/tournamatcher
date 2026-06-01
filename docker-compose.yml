@@ -2,7 +2,7 @@ services:
   backend:
     build: ./backend
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - FIREBASE_SERVICE_ACCOUNT_KEY=/run/secrets/firebase_key
     secrets:
@@ -11,6 +11,8 @@ services:
       - no-new-privileges:true
     read_only: true
     user: "1000:1000"
+    tmpfs:
+      - /tmp
 
 secrets:
   firebase_key:
