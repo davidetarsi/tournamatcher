@@ -36,30 +36,40 @@ export function TournamentWizard() {
   const [maxTeams, setMaxTeams] = useState(8)
   const [teamsPerGroup, setTeamsPerGroup] = useState(4)
   const [isPublic, setIsPublic] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const { getToken } = useFirebaseToken()
   const router = useRouter()
 
   const handleSubmit = async () => {
     if (!template) return
-    const tmpl = TEMPLATES[template]
-    const token = await getToken()
-    const result = await createTournament(
-      {
-        name,
-        schema_config: {
-          sport: tmpl.sport,
-          max_teams: maxTeams,
-          teams_per_group: teamsPerGroup,
-          public: isPublic,
-          invite_codes: { enabled: false, partial: false },
-          team_fields: tmpl.team_fields,
-          player_fields: [],
-          admin_controls: { can_set_strength: true, max_teams: maxTeams },
+    setSubmitting(true)
+    setSubmitError(null)
+    try {
+      const tmpl = TEMPLATES[template]
+      const token = await getToken()
+      const result = await createTournament(
+        {
+          name,
+          schema_config: {
+            sport: tmpl.sport,
+            max_teams: maxTeams,
+            teams_per_group: teamsPerGroup,
+            public: isPublic,
+            invite_codes: { enabled: false, partial: false },
+            team_fields: tmpl.team_fields,
+            player_fields: [],
+            admin_controls: { can_set_strength: true, max_teams: maxTeams },
+          },
         },
-      },
-      token
-    )
-    router.push(`/admin/${result.tournament_id}`)
+        token
+      )
+      router.push(`/admin/${result.tournament_id}`)
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : 'Errore durante la creazione del torneo')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (step === 1) {
@@ -119,10 +129,11 @@ export function TournamentWizard() {
         <Button variant="outline" onClick={() => setStep(1)}>
           Indietro
         </Button>
-        <Button onClick={handleSubmit} disabled={!name}>
-          Crea Torneo
+        <Button onClick={handleSubmit} disabled={!name || submitting}>
+          {submitting ? 'Creazione...' : 'Crea Torneo'}
         </Button>
       </div>
+      {submitError && <p className="text-red-600 text-sm">{submitError}</p>}
     </div>
   )
 }
