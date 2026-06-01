@@ -75,6 +75,25 @@ def test_update_schema_returns_200(client, mock_db):
 
     assert response.status_code == 200
     assert response.json()["status"] == "updated"
+    mock_ref.collection.return_value.document.return_value.set.assert_called_once()
+
+
+def test_update_schema_not_found_returns_404(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = False
+
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.put(
+            "/tournaments/nonexistent/schema",
+            json=TOURNAMENT_PAYLOAD["schema_config"],
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 404
 
 
 def test_update_schema_non_admin_returns_403(client, mock_db):
