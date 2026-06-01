@@ -1,5 +1,6 @@
 from __future__ import annotations
 from models import StandingsEntry
+from google.cloud import firestore as _firestore
 
 DEFAULT_POINTS_SYSTEM = {"win": 3, "draw": 1, "loss": 0, "draws_allowed": True}
 DEFAULT_TIEBREAKER_RULES = ("goal_difference", "goals_for", "head_to_head")
@@ -166,4 +167,51 @@ def _apply_head_to_head(
             -mini[e["team_id"]]["gd"],
             -mini[e["team_id"]]["gf"],
         ),
+    )
+
+
+@_firestore.transactional
+def _update_standings_in_transaction(
+    transaction,
+    tournament_ref,
+    team_names: dict[str, str],
+    points_system: dict,
+    tiebreaker_rules: list[str],
+) -> None:
+    match_docs = list(tournament_ref.collection("matches").stream(transaction=transaction))
+    match_dicts = [{"id": m.id, **m.to_dict()} for m in match_docs]
+
+    standings = compute_standings(match_dicts, team_names, points_system, tiebreaker_rules)
+
+    standings_col = tournament_ref.collection("standings")
+    for group_id, entries in standings.items():
+        transaction.set(
+            standings_col.document(group_id),
+            {
+                "group_name": group_id,
+                "computed_at": _firestore.SERVER_TIMESTAMP,
+                "entries": [e.model_dump() for e in entries],
+            },
+        )
+
+
+def compute_and_cache_standings(db, tournament_id: str) -> None:
+    t_ref = db.collection("tournaments").document(tournament_id)
+
+    schema_doc = t_ref.collection("config").document("schema").get()
+    config = schema_doc.to_dict() or {}
+    points_system = config.get("points_system", DEFAULT_POINTS_SYSTEM)
+    tiebreaker_rules = config.get("tiebreaker_rules", list(DEFAULT_TIEBREAKER_RULES))
+
+    team_names = {
+        d.id: d.to_dict().get("nome", d.id)
+        for d in t_ref.collection("teams").stream()
+    }
+
+    _update_standings_in_transaction(
+        db.transaction(),
+        t_ref,
+        team_names,
+        points_system,
+        tiebreaker_rules,
     )
