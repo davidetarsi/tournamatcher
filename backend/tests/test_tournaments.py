@@ -55,3 +55,42 @@ def test_create_tournament_with_invalid_token_returns_401(client):
             headers={"Authorization": "Bearer bad.token"},
         )
     assert response.status_code == 401
+
+
+def test_update_schema_returns_200(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "admin-uid-123"}
+
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.put(
+            "/tournaments/t-123/schema",
+            json=TOURNAMENT_PAYLOAD["schema_config"],
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "updated"
+
+
+def test_update_schema_non_admin_returns_403(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "other-uid"}
+
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.put(
+            "/tournaments/t-123/schema",
+            json=TOURNAMENT_PAYLOAD["schema_config"],
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 403
