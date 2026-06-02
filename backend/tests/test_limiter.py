@@ -20,3 +20,10 @@ def test_get_real_ip_fallback():
     req.headers = {}
     with patch("limiter.get_remote_address", return_value="192.168.1.1"):
         assert get_real_ip(req) == "192.168.1.1"
+
+
+def test_get_real_ip_whitespace_only_forwarded_for():
+    req = MagicMock()
+    req.headers = {"X-Forwarded-For": "   "}
+    with patch("limiter.get_remote_address", return_value="192.168.1.1"):
+        assert get_real_ip(req) == "192.168.1.1"
