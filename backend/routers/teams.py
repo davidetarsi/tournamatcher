@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from auth import verify_token
 from db import get_db
 from limiter import limiter
@@ -23,7 +23,7 @@ class _RegistrationError(Exception):
 def _register_in_transaction(transaction, tournament_ref, sanitized_fields, payload, schema):
     stats_ref = tournament_ref.collection("metadata").document("stats")
     stats_doc = stats_ref.get(transaction=transaction)
-    stats_data = stats_doc.to_dict() if stats_doc.exists else {"public_count": 0, "invite_count": 0}
+    stats_data = (stats_doc.to_dict() if stats_doc.exists else None) or {"public_count": 0, "invite_count": 0}
     public_count = stats_data.get("public_count", 0)
     invite_count = stats_data.get("invite_count", 0)
     total_count = public_count + invite_count
@@ -214,8 +214,8 @@ async def public_register_team(
     TeamModel = build_team_model(schema)
     try:
         validated = TeamModel(**payload.fields)
-    except Exception as e:
-        raise HTTPException(422, str(e))
+    except ValidationError as e:
+        raise HTTPException(422, e.errors())
 
     sanitized_data = {
         k: sanitize(v) if isinstance(v, str) else v
