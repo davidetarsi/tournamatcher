@@ -65,3 +65,72 @@ def test_registration_config_schema_not_found(client, mock_db):
     _setup_registration_config(mock_db, schema_exists=False)
     resp = client.get(f"/tournaments/{TOURNAMENT_ID}/registration-config")
     assert resp.status_code == 404
+
+
+from unittest.mock import patch
+
+
+def _setup_register(mock_db, max_teams=8, invite_enabled=False, invite_partial=False,
+                    max_public=0, public_count=0, invite_count=0):
+    t_doc = MagicMock()
+    t_doc.exists = True
+    t_doc.to_dict.return_value = {"name": "Torneo Test", "admin_uid": "admin-1"}
+
+    schema_doc = MagicMock()
+    schema_doc.exists = True
+    schema_doc.to_dict.return_value = {
+        "max_teams": max_teams,
+        "invite_codes": {"enabled": invite_enabled, "partial": invite_partial},
+        "team_fields": [{"key": "nome", "type": "text", "required": True, "max_length": 100}],
+        "max_public_teams": max_public,
+        "num_giorni": 1,
+        "num_slots_per_giorno": 1,
+    }
+
+    stats_doc = MagicMock()
+    stats_doc.exists = True
+    stats_doc.to_dict.return_value = {"public_count": public_count, "invite_count": invite_count}
+
+    t_ref = MagicMock()
+    t_ref.get.return_value = t_doc
+    t_ref.collection.return_value.document.return_value.get.return_value = schema_doc
+
+    mock_db.collection.return_value.document.return_value = t_ref
+    return t_ref
+
+
+@patch("routers.teams._register_in_transaction", return_value=("team-uuid-1", "ABCD1234"))
+def test_register_success(mock_txn, client, mock_db):
+    _setup_register(mock_db)
+    resp = client.post(
+        f"/tournaments/{TOURNAMENT_ID}/register",
+        json={"fields": {"nome": "Aquile"}, "availability_slots": []},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["team_id"] == "team-uuid-1"
+    assert data["team_code_plain"] == "ABCD1234"
+
+
+def test_register_tournament_not_found(client, mock_db):
+    t_doc = MagicMock()
+    t_doc.exists = False
+    t_ref = MagicMock()
+    t_ref.get.return_value = t_doc
+    mock_db.collection.return_value.document.return_value = t_ref
+
+    resp = client.post(
+        f"/tournaments/{TOURNAMENT_ID}/register",
+        json={"fields": {"nome": "Aquile"}, "availability_slots": []},
+    )
+    assert resp.status_code == 404
+
+
+def test_register_invalid_fields(client, mock_db):
+    _setup_register(mock_db)
+    with patch("routers.teams._register_in_transaction", return_value=("id", "PIN")):
+        resp = client.post(
+            f"/tournaments/{TOURNAMENT_ID}/register",
+            json={"fields": {}, "availability_slots": []},  # 'nome' required but missing
+        )
+    assert resp.status_code == 422
