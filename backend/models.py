@@ -91,3 +91,12 @@ class StandingsEntry(BaseModel):
     goal_difference: int
     points: int
     position: int
+
+
+class TournamentConfigUpdate(BaseModel):
+    start_date: Optional[str] = None     # ISO date "2026-07-15"
+    edit_deadline: Optional[str] = None  # ISO datetime "2026-07-14T21:59:00Z"
+
+
+class PlayerUpdate(BaseModel):
+    players: list[dict]
