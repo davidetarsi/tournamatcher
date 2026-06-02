@@ -1,3 +1,4 @@
+import hmac
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -250,8 +251,8 @@ async def team_login(
     )
     if not team_doc.exists:
         raise HTTPException(404, "Squadra non trovata")
-    stored_hash = (team_doc.to_dict() or {}).get("team_code_hash")
-    if hash_pin(payload.team_code) != stored_hash:
+    stored_hash = (team_doc.to_dict() or {}).get("team_code_hash") or ""
+    if not hmac.compare_digest(hash_pin(payload.team_code), stored_hash):
         raise HTTPException(403, "Codice non valido")
     token = create_team_token(tournament_id, team_id)
     return {"access_token": token, "token_type": "bearer"}
