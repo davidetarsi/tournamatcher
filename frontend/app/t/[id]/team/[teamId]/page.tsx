@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useTeamMatches } from '@/lib/hooks/useTeamMatches'
+import { TeamCodeEntry } from '@/components/tournament/TeamCodeEntry'
 import type { Match, StandingsEntry } from '@/types/schema'
 
 interface Props {
@@ -30,6 +31,13 @@ export default function TeamPage({ params }: Props) {
   const { matches, loading } = useTeamMatches(tournamentId, teamId)
   const [teamNames, setTeamNames] = useState<Record<string, string>>({})
   const [teamName, setTeamName] = useState<string>(teamId)
+  const [jwt, setJwt] = useState<string | null | undefined>(undefined)
+
+  useEffect(() => {
+    // localStorage not available during SSR; undefined = not-yet-checked, null = checked+absent
+    const stored = localStorage.getItem(`team_jwt_${teamId}`)
+    setJwt(stored)
+  }, [teamId])
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -48,7 +56,19 @@ export default function TeamPage({ params }: Props) {
     return unsub
   }, [tournamentId, teamId])
 
-  if (loading) return <div className="p-6">Caricamento...</div>
+  if (jwt === undefined) return <div className="p-6">Caricamento...</div>
+
+  if (jwt === null) {
+    return (
+      <TeamCodeEntry
+        tournamentId={tournamentId}
+        teamId={teamId}
+        onSuccess={(token) => setJwt(token)}
+      />
+    )
+  }
+
+  if (loading) return <div className="p-6">Caricamento partite...</div>
 
   const wins = matches.filter((m) => matchOutcome(m, teamId) === 'V').length
   const draws = matches.filter((m) => matchOutcome(m, teamId) === 'P').length
