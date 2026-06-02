@@ -6,6 +6,7 @@ import { InviteCodesPanel } from '@/components/tournament/InviteCodesPanel'
 import { SchedulePanel } from '@/components/tournament/SchedulePanel'
 import { ResultsTab } from '@/components/tournament/ResultsTab'
 import { StandingsTab } from '@/components/tournament/StandingsTab'
+import { TournamentDatesPanel } from '@/components/tournament/TournamentDatesPanel'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { PointsSystem } from '@/types/schema'
@@ -35,6 +36,7 @@ export default function DashboardPage({ params }: { params: { id: string } }) {
           <TabsTrigger value="schedule">Calendario</TabsTrigger>
           <TabsTrigger value="results">Risultati</TabsTrigger>
           <TabsTrigger value="standings">Classifiche</TabsTrigger>
+          <TabsTrigger value="dates">Date</TabsTrigger>
         </TabsList>
         <TabsContent value="teams" className="mt-4">
           <TeamTable tournamentId={params.id} />
@@ -50,6 +52,9 @@ export default function DashboardPage({ params }: { params: { id: string } }) {
         </TabsContent>
         <TabsContent value="standings" className="mt-4">
           <StandingsTab tournamentId={params.id} pointsSystem={ps} />
+        </TabsContent>
+        <TabsContent value="dates" className="mt-4">
+          <TournamentDatesPanel tournamentId={params.id} />
         </TabsContent>
       </Tabs>
     </main>
