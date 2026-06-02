@@ -2,6 +2,13 @@ import type { TournamentCreate, TournamentSchema, TeamUpdate, RegistrationConfig
 
 const BASE = process.env.NEXT_PUBLIC_RAILWAY_API_URL!
 
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 async function apiFetch<T = unknown>(path: string, token: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -11,7 +18,7 @@ async function apiFetch<T = unknown>(path: string, token: string, options: Reque
       ...options.headers,
     },
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new ApiError(res.status, await res.text())
   return res.json() as Promise<T>
 }
 
@@ -20,7 +27,7 @@ async function publicFetch<T = unknown>(path: string, options: RequestInit = {})
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) throw new ApiError(res.status, await res.text())
   return res.json() as Promise<T>
 }
 

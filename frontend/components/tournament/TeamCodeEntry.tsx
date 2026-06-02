@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { loginTeam } from '@/lib/api'
+import { loginTeam, ApiError } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -24,9 +24,7 @@ export function TeamCodeEntry({ tournamentId, teamId, onSuccess }: Props) {
       localStorage.setItem(`team_jwt_${teamId}`, access_token)
       onSuccess(access_token)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : ''
-      const is403 = msg.includes('403') || msg.toLowerCase().includes('codice')
-      setError(is403 ? 'Codice non valido' : 'Errore di rete, riprova')
+      setError(err instanceof ApiError && err.status === 403 ? 'Codice non valido' : 'Errore di rete, riprova')
     } finally {
       setLoading(false)
     }
