@@ -40,6 +40,9 @@ class SchemaConfig(BaseModel):
     tiebreaker_rules: list[str] = Field(
         default_factory=lambda: ["goal_difference", "goals_for", "head_to_head"]
     )
+    num_giorni: int = 1
+    num_slots_per_giorno: int = 1
+    max_public_teams: int = 0
 
 
 class TournamentCreate(BaseModel):
@@ -50,6 +53,16 @@ class TournamentCreate(BaseModel):
 class TeamRegister(BaseModel):
     invite_code: Optional[str] = None
     fields: dict
+
+
+class TeamPublicRegister(BaseModel):
+    fields: dict
+    invite_code: Optional[str] = None
+    availability_slots: list["AvailabilitySlot"] = []
+
+
+class TeamLoginRequest(BaseModel):
+    team_code: str
 
 
 class AvailabilitySlot(BaseModel):
