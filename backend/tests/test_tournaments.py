@@ -113,3 +113,76 @@ def test_update_schema_non_admin_returns_403(client, mock_db):
         )
 
     assert response.status_code == 403
+
+
+def test_patch_config_success(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "admin-uid-123"}
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.patch(
+            "/tournaments/t-123/config",
+            json={"start_date": "2026-07-15", "edit_deadline": "2026-07-14T21:59:00Z"},
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "updated"
+    mock_ref.collection.return_value.document.return_value.set.assert_called_once()
+
+
+def test_patch_config_not_admin_returns_403(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "other-uid"}
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.patch(
+            "/tournaments/t-123/config",
+            json={"start_date": "2026-07-15"},
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 403
+
+
+def test_patch_config_not_found_returns_404(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = False
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.patch(
+            "/tournaments/nonexistent/config",
+            json={"start_date": "2026-07-15"},
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 404
+
+
+def test_patch_config_invalid_date_returns_400(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "admin-uid-123"}
+    mock_ref = MagicMock()
+    mock_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = mock_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.patch(
+            "/tournaments/t-123/config",
+            json={"start_date": "not-a-date"},
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 400

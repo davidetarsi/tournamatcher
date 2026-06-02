@@ -27,9 +27,12 @@ def _setup_registration_config(mock_db, exists=True, schema_exists=True):
         "max_teams": 8,
         "invite_codes": {"enabled": False, "partial": False},
         "team_fields": [{"key": "nome", "type": "text", "required": True, "max_length": 100}],
+        "player_fields": [{"key": "nome", "type": "text", "required": True, "max_length": 100}],
         "num_giorni": 3,
         "num_slots_per_giorno": 2,
         "max_public_teams": 0,
+        "start_date": None,
+        "edit_deadline": None,
     }
 
     t_ref = MagicMock()
@@ -53,6 +56,9 @@ def test_registration_config_success(client, mock_db):
     assert "points_system" not in data
     assert "tiebreaker_rules" not in data
     assert "admin_controls" not in data
+    assert "start_date" in data       # may be None
+    assert "edit_deadline" in data    # may be None
+    assert "player_fields" in data
 
 
 def test_registration_config_not_found(client, mock_db):

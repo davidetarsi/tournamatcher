@@ -1,10 +1,11 @@
 import uuid
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from auth import verify_token
 from db import get_db
 from limiter import limiter
-from models import TournamentCreate, SchemaConfig
+from models import TournamentCreate, SchemaConfig, TournamentConfigUpdate
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
@@ -53,6 +54,43 @@ async def update_schema(
     return {"status": "updated"}
 
 
+@router.patch("/{tournament_id}/config")
+@limiter.limit("20/minute")
+async def update_tournament_config(
+    request: Request,
+    tournament_id: str,
+    payload: TournamentConfigUpdate,
+    user: dict = Depends(verify_token),
+    db=Depends(get_db),
+):
+    t_ref = db.collection("tournaments").document(tournament_id)
+    t = t_ref.get()
+    if not t.exists:
+        raise HTTPException(status_code=404, detail="Torneo non trovato")
+    if t.to_dict().get("admin_uid") != user["uid"]:
+        raise HTTPException(status_code=403, detail="Non autorizzato")
+
+    update_data: dict = {}
+    if payload.start_date is not None:
+        try:
+            datetime.fromisoformat(payload.start_date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato data non valido")
+        update_data["start_date"] = payload.start_date
+    if payload.edit_deadline is not None:
+        try:
+            datetime.fromisoformat(payload.edit_deadline.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Formato data non valido")
+        # Stored as-is; get_effective_deadline handles both Z and +00:00 suffix
+        update_data["edit_deadline"] = payload.edit_deadline
+
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    t_ref.collection("config").document("schema").set(update_data, merge=True)
+    return {"status": "updated"}
+
+
 @router.get("/{tournament_id}/registration-config")
 @limiter.limit("30/minute")
 async def get_registration_config(
@@ -77,8 +115,11 @@ async def get_registration_config(
         "sport": schema.get("sport", ""),
         "invite_codes": schema.get("invite_codes", {"enabled": False, "partial": False}),
         "team_fields": schema.get("team_fields", []),
+        "player_fields": schema.get("player_fields", []),
         "num_giorni": schema.get("num_giorni", 1),
         "num_slots_per_giorno": schema.get("num_slots_per_giorno", 1),
         "max_public_teams": schema.get("max_public_teams", 0),
         "max_teams": schema.get("max_teams", 0),
+        "start_date": schema.get("start_date"),
+        "edit_deadline": schema.get("edit_deadline"),
     }
