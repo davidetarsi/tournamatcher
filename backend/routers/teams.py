@@ -72,6 +72,7 @@ def _register_in_transaction(transaction, tournament_ref, sanitized_fields, payl
         "team_code_hash": pin_hash,
         "registered_via": via,
         "availability": [slot.model_dump() for slot in payload.availability_slots],
+        "players": [],
     })
     transaction.set(stats_ref, new_stats, merge=True)
 
@@ -126,6 +127,7 @@ async def register_team(
         **sanitized_data,
         "owner_uid": user["uid"],
         "confirmed": False,
+        "players": [],
     })
 
     return {"team_id": team_id}
@@ -201,6 +203,68 @@ async def update_team(
         tournament_ref.collection("teams").document(team_id).update(update_data)
     )
     return {"updated": list(update_data.keys())}
+
+
+@router.get("/teams/{team_id}/players")
+@limiter.limit("30/minute")
+async def get_players(
+    request: Request,
+    tournament_id: str,
+    team_id: str,
+    team: dict = Depends(verify_team_jwt),
+    db=Depends(get_db),
+):
+    team_doc = (
+        db.collection("tournaments")
+        .document(tournament_id)
+        .collection("teams")
+        .document(team_id)
+        .get()
+    )
+    if not team_doc.exists:
+        raise HTTPException(404, "Squadra non trovata")
+    players = (team_doc.to_dict() or {}).get("players", [])
+    return {"players": players}
+
+
+@router.put("/teams/{team_id}/players")
+@limiter.limit("20/minute")
+async def update_players(
+    request: Request,
+    tournament_id: str,
+    team_id: str,
+    payload: PlayerUpdate,
+    team: dict = Depends(verify_team_jwt),
+    db=Depends(get_db),
+):
+    t_ref = db.collection("tournaments").document(tournament_id)
+    schema_doc = t_ref.collection("config").document("schema").get()
+    schema = schema_doc.to_dict() or {}
+
+    deadline = get_effective_deadline(schema)
+    if deadline and datetime.now(timezone.utc) > deadline:
+        raise HTTPException(403, "Modifiche non più consentite: scadenza superata")
+
+    player_fields = schema.get("player_fields", [])
+    PlayerModel = build_team_model({"team_fields": player_fields})
+
+    sanitized_players = []
+    for i, p in enumerate(payload.players):
+        try:
+            validated = PlayerModel(**p)
+        except ValidationError as e:
+            raise HTTPException(422, f"Giocatore {i + 1}: {e.errors()}")
+        sanitized = {
+            k: sanitize(v) if isinstance(v, str) else v
+            for k, v in validated.model_dump().items()
+        }
+        sanitized_players.append(sanitized)
+
+    team_ref = t_ref.collection("teams").document(team_id)
+    if not team_ref.get().exists:
+        raise HTTPException(404, "Squadra non trovata")
+    team_ref.update({"players": sanitized_players})
+    return {"updated": len(sanitized_players)}
 
 
 @router.post("/register", status_code=201)
