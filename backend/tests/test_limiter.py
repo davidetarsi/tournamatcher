@@ -1,4 +1,3 @@
-from __future__ import annotations
 from unittest.mock import MagicMock, patch
 from limiter import get_real_ip
 
