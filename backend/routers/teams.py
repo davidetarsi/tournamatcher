@@ -5,10 +5,10 @@ from pydantic import BaseModel, ValidationError
 from auth import verify_token
 from db import get_db
 from limiter import limiter
-from models import TeamRegister, AvailabilitySlot, TeamPublicRegister
+from models import TeamRegister, AvailabilitySlot, TeamPublicRegister, TeamLoginRequest
 from schema_engine import build_team_model, sanitize
 from google.cloud import firestore as _firestore
-from services.auth_service import generate_pin, hash_pin
+from services.auth_service import generate_pin, hash_pin, create_team_token
 
 router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["teams"])
 
@@ -230,3 +230,28 @@ async def public_register_team(
         raise HTTPException(e.status_code, e.detail)
 
     return {"team_id": team_id, "team_code_plain": pin}
+
+
+@router.post("/teams/{team_id}/auth")
+@limiter.limit("5/minute")
+async def team_login(
+    request: Request,
+    tournament_id: str,
+    team_id: str,
+    payload: TeamLoginRequest,
+    db=Depends(get_db),
+):
+    team_doc = (
+        db.collection("tournaments")
+        .document(tournament_id)
+        .collection("teams")
+        .document(team_id)
+        .get()
+    )
+    if not team_doc.exists:
+        raise HTTPException(404, "Squadra non trovata")
+    stored_hash = team_doc.to_dict().get("team_code_hash")
+    if hash_pin(payload.team_code) != stored_hash:
+        raise HTTPException(403, "Codice non valido")
+    token = create_team_token(tournament_id, team_id)
+    return {"access_token": token, "token_type": "bearer"}

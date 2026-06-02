@@ -134,3 +134,49 @@ def test_register_invalid_fields(client, mock_db):
             json={"fields": {}, "availability_slots": []},  # 'nome' required but missing
         )
     assert resp.status_code == 422
+
+
+def _setup_auth(mock_db, team_exists=True, stored_hash=None):
+    from services.auth_service import hash_pin
+    pin = "ABCD1234"
+    if stored_hash is None:
+        stored_hash = hash_pin(pin)
+
+    team_doc = MagicMock()
+    team_doc.exists = team_exists
+    team_doc.to_dict.return_value = {"team_code_hash": stored_hash, "nome": "Aquile"}
+
+    t_ref = MagicMock()
+    t_ref.collection.return_value.document.return_value.get.return_value = team_doc
+    mock_db.collection.return_value.document.return_value = t_ref
+    return pin
+
+
+def test_auth_success(client, mock_db):
+    pin = _setup_auth(mock_db)
+    resp = client.post(
+        f"/tournaments/{TOURNAMENT_ID}/teams/team-1/auth",
+        json={"team_code": pin},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+
+
+def test_auth_wrong_pin(client, mock_db):
+    _setup_auth(mock_db)
+    resp = client.post(
+        f"/tournaments/{TOURNAMENT_ID}/teams/team-1/auth",
+        json={"team_code": "WRONG123"},
+    )
+    assert resp.status_code == 403
+
+
+def test_auth_team_not_found(client, mock_db):
+    _setup_auth(mock_db, team_exists=False)
+    resp = client.post(
+        f"/tournaments/{TOURNAMENT_ID}/teams/team-1/auth",
+        json={"team_code": "ABCD1234"},
+    )
+    assert resp.status_code == 404
