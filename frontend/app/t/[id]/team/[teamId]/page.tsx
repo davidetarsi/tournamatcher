@@ -58,13 +58,21 @@ export default function TeamPage({ params }: Props) {
 
   if (jwt === undefined) return <div className="p-6">Caricamento...</div>
 
+  const searchParams = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams()
+  const message = searchParams.get('message')
+
   if (jwt === null) {
     return (
-      <TeamCodeEntry
-        tournamentId={tournamentId}
-        teamId={teamId}
-        onSuccess={(token) => setJwt(token)}
-      />
+      <div>
+        {message && <p className="p-4 text-sm text-amber-700 bg-amber-50 border-b">{decodeURIComponent(message)}</p>}
+        <TeamCodeEntry
+          tournamentId={tournamentId}
+          teamId={teamId}
+          onSuccess={(token) => setJwt(token)}
+        />
+      </div>
     )
   }
 

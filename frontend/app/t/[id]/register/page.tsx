@@ -63,14 +63,16 @@ export default function RegisterPage() {
   const handleConfirmPin = async () => {
     if (!completedPin || !completedTeamId) return
     setConfirmingPin(true)
+    let loginFailed = false
     try {
       const { access_token } = await loginTeam(tournamentId, completedTeamId, completedPin)
       localStorage.setItem(`team_jwt_${completedTeamId}`, access_token)
     } catch {
-      // PIN confirmed by user, proceed even if auto-login fails
+      loginFailed = true
     } finally {
       setConfirmingPin(false)
-      router.push(`/t/${tournamentId}/team/${completedTeamId}`)
+      const path = `/t/${tournamentId}/team/${completedTeamId}`
+      router.push(loginFailed ? `${path}?message=${encodeURIComponent('Inserisci il codice per accedere alla tua pagina.')}` : path)
     }
   }
 
