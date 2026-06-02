@@ -250,7 +250,7 @@ async def team_login(
     )
     if not team_doc.exists:
         raise HTTPException(404, "Squadra non trovata")
-    stored_hash = team_doc.to_dict().get("team_code_hash")
+    stored_hash = (team_doc.to_dict() or {}).get("team_code_hash")
     if hash_pin(payload.team_code) != stored_hash:
         raise HTTPException(403, "Codice non valido")
     token = create_team_token(tournament_id, team_id)
