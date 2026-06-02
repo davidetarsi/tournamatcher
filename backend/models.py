@@ -58,7 +58,7 @@ class TeamRegister(BaseModel):
 class TeamPublicRegister(BaseModel):
     fields: dict
     invite_code: Optional[str] = None
-    availability_slots: list["AvailabilitySlot"] = []
+    availability_slots: list[AvailabilitySlot] = Field(default_factory=list)
 
 
 class TeamLoginRequest(BaseModel):
