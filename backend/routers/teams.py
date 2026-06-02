@@ -1,15 +1,18 @@
 import hmac
 import uuid
+from datetime import datetime, timezone
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from auth import verify_token
 from db import get_db
+from dependencies import verify_team_jwt
 from limiter import limiter
-from models import TeamRegister, AvailabilitySlot, TeamPublicRegister, TeamLoginRequest
+from models import TeamRegister, AvailabilitySlot, TeamPublicRegister, TeamLoginRequest, PlayerUpdate
 from schema_engine import build_team_model, sanitize
 from google.cloud import firestore as _firestore
 from services.auth_service import generate_pin, hash_pin, create_team_token
+from services.tournament_service import get_effective_deadline
 
 router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["teams"])
 
@@ -135,29 +138,35 @@ async def update_availability(
     tournament_id: str,
     team_id: str,
     slots: List[AvailabilitySlot],
-    user: dict = Depends(verify_token),
+    team: dict = Depends(verify_team_jwt),
     db=Depends(get_db),
 ):
+    schema_doc = (
+        db.collection("tournaments")
+        .document(tournament_id)
+        .collection("config")
+        .document("schema")
+        .get()
+    )
+    schema = schema_doc.to_dict() or {}
+    deadline = get_effective_deadline(schema)
+    if deadline and datetime.now(timezone.utc) > deadline:
+        raise HTTPException(403, "Modifiche non più consentite: scadenza superata")
+
     team_ref = (
         db.collection("tournaments")
         .document(tournament_id)
         .collection("teams")
         .document(team_id)
     )
-    team_doc = team_ref.get()
-    if not team_doc.exists or team_doc.get("owner_uid") != user["uid"]:
-        raise HTTPException(403, "Non autorizzato")
-
     slots_col = team_ref.collection("availability_slots")
 
-    # Delete all existing slots first (replace-all semantics for PUT)
     existing = slots_col.stream()
     delete_batch = db.batch()
     for doc in existing:
         delete_batch.delete(doc.reference)
     delete_batch.commit()
 
-    # Write new slots
     write_batch = db.batch()
     for slot in slots:
         write_batch.set(slots_col.document(slot.slot_id), slot.model_dump())

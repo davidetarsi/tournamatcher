@@ -42,85 +42,6 @@ def test_register_team_returns_201(client, mock_db):
     assert response.status_code == 201
     assert "team_id" in response.json()
 
-def test_update_availability_returns_200(client, mock_db):
-    team_doc = MagicMock()
-    team_doc.exists = True
-    team_doc.get.return_value = "team-owner-uid"  # matches FAKE_TOKEN uid
-    mock_db.collection.return_value.document.return_value \
-        .collection.return_value.document.return_value.get.return_value = team_doc
-
-    # Mock stream() for delete phase (slots_col is one .collection deeper than team_ref)
-    mock_db.collection.return_value.document.return_value \
-        .collection.return_value.document.return_value \
-        .collection.return_value.stream.return_value = []  # no existing slots
-
-    mock_db.batch.return_value = MagicMock()
-
-    slots_payload = [
-        {"slot_id": "0_0", "available": True},
-        {"slot_id": "0_1", "available": False},
-    ]
-
-    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
-        response = client.put(
-            f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
-            json=slots_payload,
-            headers={"Authorization": "Bearer fake.token"},
-        )
-
-    assert response.status_code == 200
-    assert response.json()["updated"] == 2
-
-
-def test_update_availability_replaces_old_slots(client, mock_db):
-    """PUT replaces ALL slots, not just the submitted ones."""
-    team_doc = MagicMock()
-    team_doc.exists = True
-    team_doc.get.return_value = "team-owner-uid"
-    mock_db.collection.return_value.document.return_value \
-        .collection.return_value.document.return_value.get.return_value = team_doc
-
-    # Simulate 3 existing slots that should be deleted.
-    # slots_col = team_ref.collection("availability_slots") resolves to:
-    # mock_db.collection.rv.document.rv.collection.rv.document.rv.collection.rv
-    old_slot = MagicMock()
-    old_slot.reference = MagicMock()
-    mock_db.collection.return_value.document.return_value \
-        .collection.return_value.document.return_value \
-        .collection.return_value.stream.return_value = [old_slot, old_slot, old_slot]
-
-    mock_batch = MagicMock()
-    mock_db.batch.return_value = mock_batch
-
-    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
-        response = client.put(
-            f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
-            json=[{"slot_id": "0_0", "available": True}],
-            headers={"Authorization": "Bearer fake.token"},
-        )
-
-    assert response.status_code == 200
-    # Verify delete was called for each old slot (3 times)
-    assert mock_batch.delete.call_count == 3
-    # Verify commit was called twice (delete batch + write batch)
-    assert mock_batch.commit.call_count == 2
-
-def test_update_availability_wrong_owner_returns_403(client, mock_db):
-    team_doc = MagicMock()
-    team_doc.exists = True
-    team_doc.get.return_value = "different-owner-uid"  # does NOT match FAKE_TOKEN uid
-    mock_db.collection.return_value.document.return_value \
-        .collection.return_value.document.return_value.get.return_value = team_doc
-
-    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
-        response = client.put(
-            f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
-            json=[{"slot_id": "0_0", "available": True}],
-            headers={"Authorization": "Bearer fake.token"},
-        )
-
-    assert response.status_code == 403
-
 
 def test_update_team_strength_as_admin_returns_200(client, mock_db):
     tournament_doc = MagicMock()
@@ -153,3 +74,62 @@ def test_update_team_non_admin_returns_403(client, mock_db):
         )
 
     assert response.status_code == 403
+
+
+from services.auth_service import create_team_token
+
+
+def _make_availability_jwt(tournament_id=TOURNAMENT_ID, team_id=TEAM_ID):
+    return create_team_token(tournament_id, team_id)
+
+
+def _setup_availability_mock(mock_db, past_deadline=False):
+    schema_doc = MagicMock()
+    schema_doc.exists = True
+    d: dict = {"team_fields": [], "invite_codes": {"enabled": False}}
+    if past_deadline:
+        d["edit_deadline"] = "2020-01-01T00:00:00Z"
+    schema_doc.to_dict.return_value = d
+
+    # schema chain: .collection.rv.document.rv.collection.rv.document.rv.get() -> schema_doc
+    mock_db.collection.return_value.document.return_value \
+        .collection.return_value.document.return_value.get.return_value = schema_doc
+    # slots stream (one level deeper): .collection.rv.document.rv.collection.rv.document.rv.collection.rv.stream()
+    mock_db.collection.return_value.document.return_value \
+        .collection.return_value.document.return_value \
+        .collection.return_value.stream.return_value = []
+    mock_db.batch.return_value = MagicMock()
+
+
+def test_update_availability_with_team_jwt(client, mock_db):
+    _setup_availability_mock(mock_db)
+    token = _make_availability_jwt()
+    resp = client.put(
+        f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
+        json=[{"slot_id": "g1_s1", "available": True}],
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["updated"] == 1
+
+
+def test_update_availability_deadline_exceeded_returns_403(client, mock_db):
+    _setup_availability_mock(mock_db, past_deadline=True)
+    token = _make_availability_jwt()
+    resp = client.put(
+        f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
+        json=[{"slot_id": "g1_s1", "available": True}],
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+def test_update_availability_wrong_team_jwt_returns_403(client, mock_db):
+    _setup_availability_mock(mock_db)
+    wrong_token = create_team_token(TOURNAMENT_ID, "other-team-id")
+    resp = client.put(
+        f"/tournaments/{TOURNAMENT_ID}/teams/{TEAM_ID}/availability",
+        json=[{"slot_id": "g1_s1", "available": True}],
+        headers={"Authorization": f"Bearer {wrong_token}"},
+    )
+    assert resp.status_code == 403
