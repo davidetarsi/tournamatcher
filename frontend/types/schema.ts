@@ -47,10 +47,13 @@ export interface RegistrationConfig {
   sport: string
   invite_codes: InviteCodes
   team_fields: SchemaField[]
+  player_fields: SchemaField[]
   num_giorni: number
   num_slots_per_giorno: number
   max_public_teams: number
   max_teams: number
+  start_date: string | null
+  edit_deadline: string | null
 }
 
 export interface Tournament {

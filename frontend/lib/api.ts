@@ -94,3 +94,38 @@ export async function loginTeam(
     { method: 'POST', body: JSON.stringify({ team_code: teamCode }) }
   )
 }
+
+export async function updateTournamentConfig(
+  tId: string,
+  data: { start_date?: string; edit_deadline?: string },
+  token: string
+): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(`/tournaments/${tId}/config`, token, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getTeamPlayers(
+  tId: string,
+  teamId: string,
+  teamJwt: string
+): Promise<{ players: Record<string, unknown>[] }> {
+  return apiFetch<{ players: Record<string, unknown>[] }>(
+    `/tournaments/${tId}/teams/${teamId}/players`,
+    teamJwt
+  )
+}
+
+export async function updatePlayers(
+  tId: string,
+  teamId: string,
+  players: Record<string, unknown>[],
+  teamJwt: string
+): Promise<{ updated: number }> {
+  return apiFetch<{ updated: number }>(
+    `/tournaments/${tId}/teams/${teamId}/players`,
+    teamJwt,
+    { method: 'PUT', body: JSON.stringify({ players }) }
+  )
+}
