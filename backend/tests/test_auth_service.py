@@ -58,7 +58,6 @@ def test_verify_team_token_wrong_tournament():
 
 
 def test_verify_team_token_expired():
-    import time
     from datetime import datetime, timedelta, timezone
     import jwt as _jwt
     expired_token = _jwt.encode(
