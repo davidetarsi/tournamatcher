@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { getRegistrationConfig, registerTeam, loginTeam } from '@/lib/api'
+import { getRegistrationConfig, registerTeam, loginTeam, ApiError } from '@/lib/api'
 import { AvailabilityGrid, initSlots } from '@/components/tournament/AvailabilityGrid'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -47,11 +47,14 @@ export default function RegisterPage() {
       setCompletedPin(result.team_code_plain)
       setCompletedTeamId(result.team_id)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Errore sconosciuto'
-      if (msg.includes('403')) setSubmitError('Codice invito non valido o iscrizione su invito.')
-      else if (msg.includes('409')) setSubmitError('Posti esauriti per questa categoria.')
-      else if (msg.includes('422')) setSubmitError('Dati non validi. Controlla i campi.')
-      else setSubmitError('Errore durante la registrazione. Riprova.')
+      if (err instanceof ApiError) {
+        if (err.status === 403) setSubmitError('Codice invito non valido o iscrizione su invito.')
+        else if (err.status === 409) setSubmitError('Posti esauriti per questa categoria.')
+        else if (err.status === 422) setSubmitError('Dati non validi. Controlla i campi.')
+        else setSubmitError('Errore durante la registrazione. Riprova.')
+      } else {
+        setSubmitError('Errore durante la registrazione. Riprova.')
+      }
     } finally {
       setSubmitting(false)
     }
