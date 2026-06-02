@@ -69,11 +69,11 @@ async def get_registration_config(
     if not schema_doc.exists:
         raise HTTPException(status_code=404, detail="Schema non trovato")
 
-    schema = schema_doc.to_dict()
+    schema = schema_doc.to_dict() or {}
     t_data = t.to_dict()
 
     return {
-        "name": t_data.get("name", ""),
+        "name": t_data["name"],
         "sport": schema.get("sport", ""),
         "invite_codes": schema.get("invite_codes", {"enabled": False, "partial": False}),
         "team_fields": schema.get("team_fields", []),

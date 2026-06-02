@@ -51,9 +51,17 @@ def test_registration_config_success(client, mock_db):
     assert data["max_teams"] == 8
     assert "team_fields" in data
     assert "points_system" not in data
+    assert "tiebreaker_rules" not in data
+    assert "admin_controls" not in data
 
 
 def test_registration_config_not_found(client, mock_db):
     _setup_registration_config(mock_db, exists=False)
+    resp = client.get(f"/tournaments/{TOURNAMENT_ID}/registration-config")
+    assert resp.status_code == 404
+
+
+def test_registration_config_schema_not_found(client, mock_db):
+    _setup_registration_config(mock_db, schema_exists=False)
     resp = client.get(f"/tournaments/{TOURNAMENT_ID}/registration-config")
     assert resp.status_code == 404
