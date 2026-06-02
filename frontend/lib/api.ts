@@ -1,4 +1,4 @@
-import type { TournamentCreate, TournamentSchema, TeamUpdate } from '@/types/schema'
+import type { TournamentCreate, TournamentSchema, TeamUpdate, RegistrationConfig } from '@/types/schema'
 
 const BASE = process.env.NEXT_PUBLIC_RAILWAY_API_URL!
 
@@ -10,6 +10,15 @@ async function apiFetch<T = unknown>(path: string, token: string, options: Reque
       Authorization: `Bearer ${token}`,
       ...options.headers,
     },
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json() as Promise<T>
+}
+
+async function publicFetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
   })
   if (!res.ok) throw new Error(await res.text())
   return res.json() as Promise<T>
@@ -47,5 +56,34 @@ export async function submitResult(
     `/tournaments/${tournamentId}/matches/${matchId}/result`,
     token,
     { method: 'POST', body: JSON.stringify(data) }
+  )
+}
+
+export async function getRegistrationConfig(tournamentId: string): Promise<RegistrationConfig> {
+  return publicFetch<RegistrationConfig>(`/tournaments/${tournamentId}/registration-config`)
+}
+
+export async function registerTeam(
+  tournamentId: string,
+  data: {
+    fields: Record<string, unknown>
+    invite_code?: string
+    availability_slots: { slot_id: string; available: boolean }[]
+  }
+): Promise<{ team_id: string; team_code_plain: string }> {
+  return publicFetch<{ team_id: string; team_code_plain: string }>(
+    `/tournaments/${tournamentId}/register`,
+    { method: 'POST', body: JSON.stringify(data) }
+  )
+}
+
+export async function loginTeam(
+  tournamentId: string,
+  teamId: string,
+  teamCode: string
+): Promise<{ access_token: string; token_type: string }> {
+  return publicFetch<{ access_token: string; token_type: string }>(
+    `/tournaments/${tournamentId}/teams/${teamId}/auth`,
+    { method: 'POST', body: JSON.stringify({ team_code: teamCode }) }
   )
 }

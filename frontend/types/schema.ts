@@ -37,6 +37,20 @@ export interface TournamentSchema {
   admin_controls: AdminControls
   points_system: PointsSystem
   tiebreaker_rules: TiebreakerRule[]
+  num_giorni: number
+  num_slots_per_giorno: number
+  max_public_teams: number
+}
+
+export interface RegistrationConfig {
+  name: string
+  sport: string
+  invite_codes: InviteCodes
+  team_fields: SchemaField[]
+  num_giorni: number
+  num_slots_per_giorno: number
+  max_public_teams: number
+  max_teams: number
 }
 
 export interface Tournament {

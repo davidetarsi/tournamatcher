@@ -62,6 +62,9 @@ export function TournamentWizard() {
             admin_controls: { can_set_strength: true, max_teams: maxTeams },
             points_system: { win: 3, draw: 1, loss: 0, draws_allowed: true },
             tiebreaker_rules: ['goal_difference', 'goals_for', 'head_to_head'],
+            num_giorni: 5,
+            num_slots_per_giorno: 4,
+            max_public_teams: maxTeams,
           },
         },
         token
