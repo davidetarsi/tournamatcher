@@ -4,7 +4,9 @@ import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useTeamMatches } from '@/lib/hooks/useTeamMatches'
 import { TeamCodeEntry } from '@/components/tournament/TeamCodeEntry'
-import type { Match, StandingsEntry } from '@/types/schema'
+import { getRegistrationConfig } from '@/lib/api'
+import { PlayerEditor } from '@/components/tournament/PlayerEditor'
+import type { Match, StandingsEntry, RegistrationConfig } from '@/types/schema'
 
 interface Props {
   params: { id: string; teamId: string }
@@ -26,18 +28,37 @@ const outcomeStyle: Record<string, string> = {
   S: 'bg-red-100 text-red-800',
 }
 
+function effectiveDeadline(cfg: RegistrationConfig): string | null {
+  if (cfg.edit_deadline) return cfg.edit_deadline
+  if (cfg.start_date) {
+    // start_date is "YYYY-MM-DD"; compute midnight UTC, subtract 1 day, set 23:59 UTC
+    const d = new Date(cfg.start_date + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() - 1)
+    d.setUTCHours(23, 59, 0, 0)
+    return d.toISOString()
+  }
+  return null
+}
+
 export default function TeamPage({ params }: Props) {
   const { id: tournamentId, teamId } = params
   const { matches, loading } = useTeamMatches(tournamentId, teamId)
   const [teamNames, setTeamNames] = useState<Record<string, string>>({})
   const [teamName, setTeamName] = useState<string>(teamId)
   const [jwt, setJwt] = useState<string | null | undefined>(undefined)
+  const [config, setConfig] = useState<RegistrationConfig | null>(null)
 
   useEffect(() => {
     // localStorage not available during SSR; undefined = not-yet-checked, null = checked+absent
     const stored = localStorage.getItem(`team_jwt_${teamId}`)
     setJwt(stored)
   }, [teamId])
+
+  useEffect(() => {
+    getRegistrationConfig(tournamentId)
+      .then(setConfig)
+      .catch(() => {})
+  }, [tournamentId])
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -117,6 +138,15 @@ export default function TeamPage({ params }: Props) {
         })}
         {matches.length === 0 && <p className="text-gray-500 text-sm">Nessuna partita trovata.</p>}
       </div>
+      {jwt && config && config.player_fields.length > 0 && (
+        <PlayerEditor
+          tournamentId={tournamentId}
+          teamId={teamId}
+          teamJwt={jwt}
+          playerFields={config.player_fields}
+          deadline={effectiveDeadline(config)}
+        />
+      )}
     </main>
   )
 }
