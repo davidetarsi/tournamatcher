@@ -32,7 +32,10 @@ def create_team_token(tournament_id: str, team_id: str) -> str:
 
 
 def verify_team_token(token: str, tournament_id: str, team_id: str) -> dict:
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except jwt.InvalidTokenError as e:
+        raise ValueError(f"Token non valido: {e}") from e
     if payload.get("sub") != team_id or payload.get("tournament_id") != tournament_id:
         raise ValueError("Token non valido per questa risorsa")
     return payload

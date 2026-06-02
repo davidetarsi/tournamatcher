@@ -3,8 +3,6 @@ from __future__ import annotations
 import os
 import pytest
 
-os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests-minimum-32b")
-
 from services.auth_service import generate_pin, hash_pin, create_team_token, verify_team_token
 import jwt as _jwt
 
@@ -38,6 +36,7 @@ def test_create_team_token_payload():
     assert payload["sub"] == "team-1"
     assert payload["tournament_id"] == "t-1"
     assert payload["role"] == "team"
+    assert "exp" in payload
 
 
 def test_verify_team_token_valid():
@@ -56,3 +55,17 @@ def test_verify_team_token_wrong_tournament():
     token = create_team_token("t-1", "team-1")
     with pytest.raises(ValueError, match="non valido"):
         verify_team_token(token, "t-2", "team-1")
+
+
+def test_verify_team_token_expired():
+    import time
+    from datetime import datetime, timedelta, timezone
+    import jwt as _jwt
+    expired_token = _jwt.encode(
+        {"sub": "team-1", "tournament_id": "t-1", "role": "team",
+         "exp": datetime.now(timezone.utc) - timedelta(seconds=1)},
+        os.environ["JWT_SECRET"],
+        algorithm="HS256",
+    )
+    with pytest.raises(ValueError):
+        verify_team_token(expired_token, "t-1", "team-1")

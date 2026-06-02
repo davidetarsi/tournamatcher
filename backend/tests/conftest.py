@@ -1,6 +1,9 @@
 from __future__ import annotations
+import os
 import pytest
 from unittest.mock import MagicMock, patch
+
+os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests-minimum-32b")
 
 FAKE_UID = "test-user-uid"
 FAKE_ADMIN_UID = "admin-uid"
