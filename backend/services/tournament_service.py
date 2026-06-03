@@ -1,5 +1,33 @@
 from __future__ import annotations
+import re
 from datetime import datetime, timedelta, timezone
+
+
+def generate_slug(name: str, start_date: str | None) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", name.lower().strip()).strip("-")
+    if start_date:
+        date_part = re.sub(r"[^a-z0-9]+", "-", start_date.lower()).strip("-")
+        base = f"{base}-{date_part}"
+    return base
+
+
+def reserve_slug_in_transaction(
+    transaction,
+    slugs_ref,
+    base_slug: str,
+    tournament_id: str,
+    t_ref,
+    doc_data: dict,
+) -> str:
+    """Called within a Firestore transaction. Finds free slug and writes both docs."""
+    candidate = base_slug
+    i = 2
+    while transaction.get(slugs_ref.document(candidate)).exists:
+        candidate = f"{base_slug}-{i}"
+        i += 1
+    transaction.set(slugs_ref.document(candidate), {"tournament_id": tournament_id})
+    transaction.set(t_ref, {**doc_data, "slug": candidate})
+    return candidate
 
 
 def get_effective_deadline(schema: dict) -> datetime | None:
