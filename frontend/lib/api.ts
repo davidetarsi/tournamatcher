@@ -136,3 +136,7 @@ export async function getTournamentBySlug(slug: string): Promise<{ tournament_id
   if (!res.ok) throw new Error(`Tournament not found: ${slug}`)
   return res.json()
 }
+
+export async function getMyTournaments(token: string): Promise<Array<{ name: string; slug: string; status: string }>> {
+  return apiFetch<Array<{ name: string; slug: string; status: string }>>('/tournaments/my-tournaments', token)
+}
