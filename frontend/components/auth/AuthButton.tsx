@@ -14,22 +14,28 @@ export default function AuthButton() {
   const [isOpen, setIsOpen] = useState(false)
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null)
   const [loadingTournaments, setLoadingTournaments] = useState(false)
+  const [fetchError, setFetchError] = useState(false)
 
   // Fetch tournaments whenever the drawer opens and user is authenticated
   useEffect(() => {
     if (!isOpen || !user) return
+    setFetchError(false)
     setLoadingTournaments(true)
     user
       .getIdToken()
       .then((token) => getMyTournaments(token))
       .then((data) => setTournaments(data))
-      .catch(() => setTournaments([]))
+      .catch(() => { setFetchError(true); setTournaments([]) })
       .finally(() => setLoadingTournaments(false))
   }, [isOpen, user])
 
   const handleSignIn = async () => {
-    const provider = new GoogleAuthProvider()
-    await signInWithPopup(auth, provider)
+    try {
+      const provider = new GoogleAuthProvider()
+      await signInWithPopup(auth, provider)
+    } catch {
+      // user cancelled or network error — no action needed
+    }
   }
 
   const handleSignOut = async () => {
@@ -37,8 +43,8 @@ export default function AuthButton() {
     await signOut(auth)
   }
 
-  // While auth is resolving, render nothing to avoid flicker
-  if (loading) return null
+  // While auth is resolving, show a fixed-size skeleton to avoid layout shift
+  if (loading) return <div className="w-9 h-9 rounded-full bg-gray-200 animate-pulse" />
 
   if (!user) {
     return (
@@ -110,25 +116,27 @@ export default function AuthButton() {
                 </div>
               )}
 
-              {!loadingTournaments && tournaments !== null && tournaments.length === 0 && (
-                <p className="text-sm text-gray-500">Nessun torneo</p>
-              )}
-
-              {!loadingTournaments && tournaments !== null && tournaments.length > 0 && (
-                <ul className="space-y-1">
-                  {tournaments.map((t) => (
-                    <li key={t.slug}>
-                      <Link
-                        href={`/t/${t.slug}/admin`}
-                        onClick={() => setIsOpen(false)}
-                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm text-gray-800"
-                      >
-                        <span className="truncate">{t.name}</span>
-                        <span className="ml-2 text-xs text-gray-400 shrink-0">{t.status}</span>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
+              {!loadingTournaments && tournaments !== null && (
+                fetchError ? (
+                  <p className="text-sm text-red-500 py-4 text-center">Errore nel caricamento</p>
+                ) : tournaments.length === 0 ? (
+                  <p className="text-sm text-gray-500 py-4 text-center">Nessun torneo</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {tournaments.map((t) => (
+                      <li key={t.slug}>
+                        <Link
+                          href={`/t/${t.slug}/admin`}
+                          onClick={() => setIsOpen(false)}
+                          className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors text-sm text-gray-800"
+                        >
+                          <span className="truncate">{t.name}</span>
+                          <span className="ml-2 text-xs text-gray-400 shrink-0">{t.status}</span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )
               )}
             </div>
 
