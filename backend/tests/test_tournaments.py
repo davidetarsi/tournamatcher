@@ -29,11 +29,15 @@ def client(mock_db):
     return TestClient(app)
 
 def test_create_tournament_returns_201(client, mock_db):
-    mock_doc = MagicMock()
-    mock_doc.id = "new-tournament-id"
-    mock_db.collection.return_value.document.return_value = mock_doc
+    mock_snap_free = MagicMock()
+    mock_snap_free.exists = False
+    mock_tx = MagicMock()
+    mock_tx.get.return_value = mock_snap_free
+    mock_db.transaction.return_value = mock_tx
+    mock_db.collection.return_value.document.return_value = MagicMock()
 
-    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN), \
+         patch("firebase_admin.firestore.transactional", side_effect=lambda f: f):
         response = client.post(
             "/tournaments",
             json=TOURNAMENT_PAYLOAD,
@@ -186,3 +190,95 @@ def test_patch_config_invalid_date_returns_400(client, mock_db):
         )
 
     assert response.status_code == 400
+
+
+# ---- NEW TESTS for Task 2 ----
+
+
+def test_create_tournament_returns_slug(client, mock_db):
+    """POST /tournaments must return slug in response."""
+    mock_snap_free = MagicMock()
+    mock_snap_free.exists = False
+    mock_tx = MagicMock()
+    mock_tx.get.return_value = mock_snap_free
+    mock_db.transaction.return_value = mock_tx
+
+    mock_db.collection.return_value.document.return_value = MagicMock()
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN), \
+         patch("firebase_admin.firestore.transactional", side_effect=lambda f: f):
+        response = client.post(
+            "/tournaments",
+            json=TOURNAMENT_PAYLOAD,
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert "tournament_id" in data
+    assert "slug" in data
+    assert data["slug"].startswith("torneo-calcetto")
+
+
+def test_get_tournament_by_slug_found(client, mock_db):
+    slug_doc = MagicMock()
+    slug_doc.exists = True
+    slug_doc.to_dict.return_value = {"tournament_id": "uuid-123"}
+
+    t_doc = MagicMock()
+    t_doc.exists = True
+    t_doc.to_dict.return_value = {"name": "Torneo Calcetto 2026", "logo_url": None}
+
+    def collection_side_effect(name):
+        coll = MagicMock()
+        if name == "tournament_slugs":
+            coll.document.return_value.get.return_value = slug_doc
+        else:
+            coll.document.return_value.get.return_value = t_doc
+        return coll
+
+    mock_db.collection.side_effect = collection_side_effect
+
+    response = client.get("/tournaments/by-slug/torneo-calcetto-2026")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tournament_id"] == "uuid-123"
+    assert data["name"] == "Torneo Calcetto 2026"
+    assert data["logo_url"] is None
+
+
+def test_get_tournament_by_slug_not_found(client, mock_db):
+    slug_doc = MagicMock()
+    slug_doc.exists = False
+    mock_db.collection.return_value.document.return_value.get.return_value = slug_doc
+
+    response = client.get("/tournaments/by-slug/slug-inesistente")
+
+    assert response.status_code == 404
+
+
+def test_get_my_tournaments_returns_list(client, mock_db):
+    t1 = MagicMock()
+    t1.to_dict.return_value = {"name": "Torneo A", "slug": "torneo-a", "status": "draft"}
+    t2 = MagicMock()
+    t2.to_dict.return_value = {"name": "Torneo B", "slug": "torneo-b", "status": "draft"}
+
+    mock_db.collection.return_value.where.return_value.order_by.return_value.stream.return_value = [t1, t2]
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN):
+        response = client.get(
+            "/tournaments/my-tournaments",
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert data[0]["slug"] == "torneo-a"
+    assert data[1]["name"] == "Torneo B"
+
+
+def test_get_my_tournaments_requires_auth(client):
+    response = client.get("/tournaments/my-tournaments")
+    assert response.status_code == 422

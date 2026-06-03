@@ -1,13 +1,64 @@
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
+from firebase_admin import firestore as fa_firestore
 from auth import verify_token
 from db import get_db
 from limiter import limiter
 from models import TournamentCreate, SchemaConfig, TournamentConfigUpdate
+from services.tournament_service import generate_slug, reserve_slug_in_transaction
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
+
+
+@router.get("/by-slug/{slug}")
+@limiter.limit("30/minute")
+async def get_tournament_by_slug(
+    request: Request,
+    slug: str,
+    db=Depends(get_db),
+):
+    slug_doc = db.collection("tournament_slugs").document(slug).get()
+    if not slug_doc.exists:
+        raise HTTPException(status_code=404, detail="Torneo non trovato")
+    tournament_id = slug_doc.to_dict()["tournament_id"]
+    t_doc = db.collection("tournaments").document(tournament_id).get()
+    if not t_doc.exists:
+        raise HTTPException(status_code=404, detail="Torneo non trovato")
+    t_data = t_doc.to_dict()
+    return {
+        "tournament_id": tournament_id,
+        "name": t_data["name"],
+        "logo_url": t_data.get("logo_url"),
+    }
+
+
+@router.get("/my-tournaments")
+@limiter.limit("20/minute")
+async def get_my_tournaments(
+    request: Request,
+    user: dict = Depends(verify_token),
+    db=Depends(get_db),
+):
+    tournaments = (
+        db.collection("tournaments")
+        .where("admin_uid", "==", user["uid"])
+        .order_by("created_at", direction="DESCENDING")
+        .stream()
+    )
+    result = []
+    for t in tournaments:
+        d = t.to_dict()
+        result.append({
+            "name": d["name"],
+            "slug": d.get("slug", ""),
+            "status": d.get("status", "draft"),
+        })
+    return result
 
 
 @router.post("", status_code=201)
@@ -19,20 +70,31 @@ async def create_tournament(
     db=Depends(get_db),
 ):
     tournament_id = str(uuid.uuid4())
-    ref = db.collection("tournaments").document(tournament_id)
+    base_slug = generate_slug(payload.name, payload.start_date)
 
-    ref.set({
+    slugs_ref = db.collection("tournament_slugs")
+    t_ref = db.collection("tournaments").document(tournament_id)
+    doc_data = {
         "name": payload.name,
         "admin_uid": user["uid"],
         "public": payload.schema_config.public,
         "status": "draft",
-    })
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
 
-    ref.collection("config").document("schema").set(
+    @fa_firestore.transactional
+    def _txn(transaction):
+        return reserve_slug_in_transaction(
+            transaction, slugs_ref, base_slug, tournament_id, t_ref, doc_data
+        )
+
+    slug = _txn(db.transaction())
+
+    t_ref.collection("config").document("schema").set(
         payload.schema_config.model_dump()
     )
 
-    return {"tournament_id": tournament_id}
+    return {"tournament_id": tournament_id, "slug": slug}
 
 
 @router.put("/{tournament_id}/schema")
@@ -82,7 +144,6 @@ async def update_tournament_config(
             datetime.fromisoformat(payload.edit_deadline.replace("Z", "+00:00"))
         except ValueError:
             raise HTTPException(status_code=400, detail="Formato data non valido")
-        # Stored as-is; get_effective_deadline handles both Z and +00:00 suffix
         update_data["edit_deadline"] = payload.edit_deadline
 
     if not update_data:
