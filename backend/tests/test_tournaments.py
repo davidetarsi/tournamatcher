@@ -282,3 +282,43 @@ def test_get_my_tournaments_returns_list(client, mock_db):
 def test_get_my_tournaments_requires_auth(client):
     response = client.get("/tournaments/my-tournaments")
     assert response.status_code == 422
+
+
+def test_create_tournament_with_logo(client, mock_db):
+    """Logo Base64 triggers Storage upload; logo_url saved in doc."""
+    mock_snap_free = MagicMock()
+    mock_snap_free.exists = False
+    mock_tx = MagicMock()
+    mock_tx.get.return_value = mock_snap_free
+    mock_db.transaction.return_value = mock_tx
+    mock_db.collection.return_value.document.return_value = MagicMock()
+
+    payload_with_logo = {**TOURNAMENT_PAYLOAD, "logo_base64": "data:image/png;base64,iVBORw0KGgo="}
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN), \
+         patch("firebase_admin.firestore.transactional", side_effect=lambda f: f), \
+         patch("routers.tournaments.upload_logo", return_value="https://storage.googleapis.com/bucket/logo.png") as mock_upload:
+        response = client.post(
+            "/tournaments",
+            json=payload_with_logo,
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 201
+    mock_upload.assert_called_once()
+
+
+def test_create_tournament_logo_upload_failure_returns_500(client, mock_db):
+    """If Storage upload fails, tournament is NOT created (no Firestore write)."""
+    payload_with_logo = {**TOURNAMENT_PAYLOAD, "logo_base64": "data:image/png;base64,iVBORw0KGgo="}
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=FAKE_TOKEN), \
+         patch("routers.tournaments.upload_logo", side_effect=Exception("Storage error")):
+        response = client.post(
+            "/tournaments",
+            json=payload_with_logo,
+            headers={"Authorization": "Bearer fake.jwt.token"},
+        )
+
+    assert response.status_code == 500
+    mock_db.transaction.assert_not_called()

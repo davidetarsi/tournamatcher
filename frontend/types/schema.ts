@@ -76,6 +76,8 @@ export interface Team {
 export interface TournamentCreate {
   name: string
   schema_config: TournamentSchema
+  start_date?: string
+  logo_base64?: string
 }
 
 export interface TeamUpdate {

@@ -49,6 +49,7 @@ class TournamentCreate(BaseModel):
     name: str
     schema_config: SchemaConfig
     start_date: Optional[str] = None   # ISO date "2026-07-15", used only for slug
+    logo_base64: Optional[str] = None
 
 
 class TeamRegister(BaseModel):

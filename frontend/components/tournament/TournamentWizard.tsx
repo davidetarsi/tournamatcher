@@ -38,8 +38,21 @@ export function TournamentWizard() {
   const [isPublic, setIsPublic] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [logoFile, setLogoFile] = useState<File | null>(null)
+  const [logoError, setLogoError] = useState<string | null>(null)
   const { getToken } = useFirebaseToken()
   const router = useRouter()
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null
+    setLogoError(null)
+    if (file && file.size > 2 * 1024 * 1024) {
+      setLogoError('Il logo non può superare 2MB.')
+      setLogoFile(null)
+      return
+    }
+    setLogoFile(file)
+  }
 
   const handleSubmit = async () => {
     if (!template) return
@@ -48,6 +61,17 @@ export function TournamentWizard() {
     try {
       const tmpl = TEMPLATES[template]
       const token = await getToken()
+
+      let logo_base64: string | undefined
+      if (logoFile) {
+        logo_base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(logoFile)
+        })
+      }
+
       const result = await createTournament(
         {
           name,
@@ -66,6 +90,7 @@ export function TournamentWizard() {
             num_slots_per_giorno: 1,
             max_public_teams: 0,
           },
+          ...(logo_base64 ? { logo_base64 } : {}),
         },
         token
       )
@@ -129,6 +154,17 @@ export function TournamentWizard() {
       <div className="flex items-center gap-2">
         <Switch id="public" checked={isPublic} onCheckedChange={setIsPublic} />
         <Label htmlFor="public">Torneo pubblico</Label>
+      </div>
+      <div>
+        <Label htmlFor="logo">Logo torneo (opzionale, max 2MB)</Label>
+        <input
+          id="logo"
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-gray-50 file:text-gray-700 hover:file:bg-gray-100 mt-1"
+          onChange={handleLogoChange}
+        />
+        {logoError && <p className="text-red-600 text-xs mt-1">{logoError}</p>}
       </div>
       <div className="flex gap-2">
         <Button variant="outline" onClick={() => setStep(1)}>
