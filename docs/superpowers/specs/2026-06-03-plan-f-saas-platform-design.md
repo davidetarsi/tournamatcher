@@ -145,16 +145,24 @@ export function useSlugResolution(slug: string) {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  useEffect(() => {
-    getDoc(doc(db, 'tournament_slugs', slug)).then((snap) => {
-      if (snap.exists()) {
-        setTournamentId(snap.data().tournament_id)
-      } else {
-        setNotFound(true)
-      }
-      setLoading(false)
-    })
-  }, [slug])
+useEffect(() => {
+  let isMounted = true;
+  getDoc(doc(db, 'tournament_slugs', slug)).then((snap) => {
+    if (!isMounted) return;
+    if (snap.exists()) {
+      setTournamentId(snap.data().tournament_id)
+    } else {
+      setNotFound(true)
+    }
+    setLoading(false)
+  }).catch((err) => {
+    if (!isMounted) return;
+    setNotFound(true);
+    setLoading(false);
+  });
+
+  return () => { isMounted = false; };
+}, [slug])
 
   return { tournamentId, loading, notFound }
 }
@@ -200,7 +208,7 @@ Se `logo_base64` è presente, **prima** di scrivere su Firestore:
 3. Recupera il download URL pubblico → `logo_url`.
 4. Se l'upload Storage **fallisce** → restituisce 500 senza scrivere su Firestore (nessun documento orfano).
 
-Dopo l'upload Storage, si esegue la transazione Firestore (§1.2). Se la transazione **fallisce** dopo un upload Storage riuscito → il backend tenta `bucket.blob(path).delete()` in best-effort (non atomico, errori silenziati) e restituisce 500.
+Dopo l'upload Storage, si esegue la transazione Firestore (§1.2). Se la transazione fallisce dopo un upload Storage riuscito → il backend ESEGUE UNA TASK IN BACKGROUND (o usa un blocco finally robusto) per chiamare bucket.blob(path).delete(). Sebbene il best-effort sia tollerabile per i file orfani, il log di errore non deve essere silenziato, ma tracciato esplicitamente (es. logger.error), altrimenti si accumulerà spazio su Storage senza visibilità per lo sviluppatore.
 
 Il campo `logo_url` viene salvato nel documento torneo e incluso nella risposta di `GET /tournaments/by-slug/{slug}`.
 
@@ -235,8 +243,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const apiUrl = process.env.RAILWAY_API_URL  // server-side, non NEXT_PUBLIC_
   try {
     const res = await fetch(`${apiUrl}/tournaments/by-slug/${params.slug}`, {
-      next: { revalidate: 3600 },
-    })
+  // Revalidate impostato a 60 secondi invece di 3600.
+  // L'endpoint FastAPI ha già un rate limit a monte (30/min),
+  // quindi Next.js deve essere più reattivo se l'admin aggiorna il logo.
+  next: { revalidate: 60 },
+})
     if (!res.ok) return { title: 'Torneo non trovato' }
     const data = await res.json()
     const image = data.logo_url || process.env.NEXT_PUBLIC_DEFAULT_LOGO_URL || ''
@@ -257,6 +268,8 @@ export default function TournamentPage({ params }: Props) {
   return <TournamentPublicClient slug={params.slug} />
 }
 ```
+
+Poiché Next.js App Router memorizza la cache a livello di Data Fetching, un revalidate di 1 ora (3600s) manterrebbe la preview del logo bloccata per un'ora intera dopo che l'admin l'ha modificato. 60 secondi garantiscono prestazioni ottimali senza stressare il backend
 
 La stessa variabile d'ambiente `RAILWAY_API_URL` (senza `NEXT_PUBLIC_`) viene aggiunta a `.env.local` e alle variabili d'ambiente di Vercel.
 
