@@ -6,6 +6,11 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
+    match /tournament_slugs/{slug} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     match /tournaments/{tournamentId} {
       allow read: if request.auth != null;
       allow write: if false;
