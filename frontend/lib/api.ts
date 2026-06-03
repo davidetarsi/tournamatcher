@@ -129,3 +129,10 @@ export async function updatePlayers(
     { method: 'PUT', body: JSON.stringify({ players }) }
   )
 }
+
+export async function getTournamentBySlug(slug: string): Promise<{ tournament_id: string; name: string; logo_url: string | null }> {
+  const apiUrl = process.env.RAILWAY_API_URL || process.env.NEXT_PUBLIC_RAILWAY_API_URL || 'http://localhost:8000'
+  const res = await fetch(`${apiUrl}/tournaments/by-slug/${slug}`, { next: { revalidate: 60 } } as RequestInit)
+  if (!res.ok) throw new Error(`Tournament not found: ${slug}`)
+  return res.json()
+}
