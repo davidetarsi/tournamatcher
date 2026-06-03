@@ -17,10 +17,14 @@ export function TournamentList() {
   useEffect(() => {
     if (!uid) return
     const q = query(collection(db, 'tournaments'), where('admin_uid', '==', uid))
-    const unsubscribe = onSnapshot(q, (snap) => {
-      setTournaments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Tournament)))
-      setLoading(false)
-    })
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        setTournaments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Tournament)))
+        setLoading(false)
+      },
+      () => setLoading(false)
+    )
     return unsubscribe
   }, [uid])
 

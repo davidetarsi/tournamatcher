@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react'
 import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import { useTeamMatches } from '@/lib/hooks/useTeamMatches'
+import { useSlugResolution } from '@/lib/hooks/useSlugResolution'
 import { TeamCodeEntry } from '@/components/tournament/TeamCodeEntry'
 import { getRegistrationConfig } from '@/lib/api'
 import { PlayerEditor } from '@/components/tournament/PlayerEditor'
 import type { Match, StandingsEntry, RegistrationConfig } from '@/types/schema'
 
 interface Props {
-  params: { id: string; teamId: string }
+  params: { slug: string; teamId: string }
 }
 
 function matchOutcome(m: Match, teamId: string): 'V' | 'P' | 'S' | null {
@@ -41,8 +42,9 @@ function effectiveDeadline(cfg: RegistrationConfig): string | null {
 }
 
 export default function TeamPage({ params }: Props) {
-  const { id: tournamentId, teamId } = params
-  const { matches, loading } = useTeamMatches(tournamentId, teamId)
+  const { slug, teamId } = params
+  const { tournamentId, loading: slugLoading, notFound: slugNotFound } = useSlugResolution(slug)
+  const { matches, loading } = useTeamMatches(tournamentId ?? '', teamId)
   const [teamNames, setTeamNames] = useState<Record<string, string>>({})
   const [teamName, setTeamName] = useState<string>(teamId)
   const [jwt, setJwt] = useState<string | null | undefined>(undefined)
@@ -55,12 +57,14 @@ export default function TeamPage({ params }: Props) {
   }, [teamId])
 
   useEffect(() => {
+    if (!tournamentId) return
     getRegistrationConfig(tournamentId)
       .then(setConfig)
       .catch(() => {})
   }, [tournamentId])
 
   useEffect(() => {
+    if (!tournamentId) return
     const unsub = onSnapshot(
       collection(db, 'tournaments', tournamentId, 'standings'),
       (snap) => {
@@ -77,7 +81,8 @@ export default function TeamPage({ params }: Props) {
     return unsub
   }, [tournamentId, teamId])
 
-  if (jwt === undefined) return <div className="p-6">Caricamento...</div>
+  if (slugLoading || jwt === undefined) return <div className="p-6">Caricamento...</div>
+  if (slugNotFound) return <div className="p-6 text-red-600">Torneo non trovato.</div>
 
   const searchParams = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search)
@@ -89,7 +94,7 @@ export default function TeamPage({ params }: Props) {
       <div>
         {message && <p className="p-4 text-sm text-amber-700 bg-amber-50 border-b">{decodeURIComponent(message)}</p>}
         <TeamCodeEntry
-          tournamentId={tournamentId}
+          tournamentId={tournamentId!}
           teamId={teamId}
           onSuccess={(token) => setJwt(token)}
         />
@@ -140,7 +145,7 @@ export default function TeamPage({ params }: Props) {
       </div>
       {jwt && config && config.player_fields.length > 0 && (
         <PlayerEditor
-          tournamentId={tournamentId}
+          tournamentId={tournamentId!}
           teamId={teamId}
           teamJwt={jwt}
           playerFields={config.player_fields}

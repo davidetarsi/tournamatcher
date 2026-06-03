@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { getRegistrationConfig, registerTeam, loginTeam, ApiError } from '@/lib/api'
+import { useSlugResolution } from '@/lib/hooks/useSlugResolution'
 import { AvailabilityGrid, initSlots } from '@/components/tournament/AvailabilityGrid'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,8 +11,9 @@ import type { RegistrationConfig, SchemaField } from '@/types/schema'
 type Slot = { slot_id: string; available: boolean }
 
 export default function RegisterPage() {
-  const { id: tournamentId } = useParams() as { id: string }
+  const { slug } = useParams() as { slug: string }
   const router = useRouter()
+  const { tournamentId, loading: slugLoading, notFound: slugNotFound } = useSlugResolution(slug)
 
   const [config, setConfig] = useState<RegistrationConfig | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -25,6 +27,7 @@ export default function RegisterPage() {
   const [confirmingPin, setConfirmingPin] = useState(false)
 
   useEffect(() => {
+    if (!tournamentId) return
     getRegistrationConfig(tournamentId)
       .then((cfg) => {
         setConfig(cfg)
@@ -35,7 +38,7 @@ export default function RegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!config) return
+    if (!config || !tournamentId) return
     setSubmitting(true)
     setSubmitError(null)
     try {
@@ -61,7 +64,7 @@ export default function RegisterPage() {
   }
 
   const handleConfirmPin = async () => {
-    if (!completedPin || !completedTeamId) return
+    if (!completedPin || !completedTeamId || !tournamentId) return
     setConfirmingPin(true)
     let loginFailed = false
     try {
@@ -71,11 +74,13 @@ export default function RegisterPage() {
       loginFailed = true
     } finally {
       setConfirmingPin(false)
-      const path = `/t/${tournamentId}/team/${completedTeamId}`
+      const path = `/t/${slug}/team/${completedTeamId}`
       router.push(loginFailed ? `${path}?message=${encodeURIComponent('Inserisci il codice per accedere alla tua pagina.')}` : path)
     }
   }
 
+  if (slugLoading) return <div className="p-6">Caricamento...</div>
+  if (slugNotFound) return <div className="p-6 text-red-600">Torneo non trovato.</div>
   if (!config && !loadError) return <div className="p-6">Caricamento...</div>
   if (loadError) return <div className="p-6 text-red-600">{loadError}</div>
 
@@ -113,7 +118,7 @@ export default function RegisterPage() {
             <Input
               type={f.type === 'email' ? 'email' : f.type === 'number' ? 'number' : 'text'}
               required={f.required}
-              maxLength={f.max_length}
+              maxLength={f.max_length ?? undefined}
               value={fieldValues[f.key] ?? ''}
               onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
             />

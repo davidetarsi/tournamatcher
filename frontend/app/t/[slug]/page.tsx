@@ -4,31 +4,34 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useStandings } from '@/lib/hooks/useStandings'
 import { useMatches } from '@/lib/hooks/useMatches'
+import { useSlugResolution } from '@/lib/hooks/useSlugResolution'
 import { MatchCalendarView } from '@/components/tournament/MatchCalendarView'
 import { getRegistrationConfig } from '@/lib/api'
 import type { StandingsEntry } from '@/types/schema'
 
 export default function PublicTournamentPage() {
-  const { id: tournamentId } = useParams() as { id: string }
-  const { standings, loading: standingsLoading } = useStandings(tournamentId)
-  const { matches, loading: matchesLoading } = useMatches(tournamentId)
+  const { slug } = useParams() as { slug: string }
+  const { tournamentId, loading: slugLoading, notFound: slugNotFound } = useSlugResolution(slug)
+  const { standings, loading: standingsLoading } = useStandings(tournamentId ?? '')
+  const { matches, loading: matchesLoading } = useMatches(tournamentId ?? '')
   const [tournamentName, setTournamentName] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [activeTab, setActiveTab] = useState<'standings' | 'calendar'>('standings')
 
   useEffect(() => {
+    if (!tournamentId) return
     getRegistrationConfig(tournamentId)
       .then((cfg) => setTournamentName(cfg.name))
       .catch(() => setNotFound(true))
   }, [tournamentId])
 
-  // Build team name map for the calendar view
   const teamNames: Record<string, string> = {}
   Object.values(standings).forEach((entries: StandingsEntry[]) => {
     entries.forEach((e) => { teamNames[e.team_id] = e.team_name })
   })
 
-  if (notFound) return <div className="p-6 text-red-600">Torneo non trovato.</div>
+  if (slugLoading) return <div className="p-6">Caricamento...</div>
+  if (slugNotFound || notFound) return <div className="p-6 text-red-600">Torneo non trovato.</div>
   if (tournamentName === null) return <div className="p-6">Caricamento...</div>
 
   const groupNames = Object.keys(standings).sort()
@@ -38,7 +41,6 @@ export default function PublicTournamentPage() {
     <main className="container mx-auto p-6 max-w-2xl">
       <h1 className="text-2xl font-bold mb-6">{tournamentName}</h1>
 
-      {/* Tab bar */}
       <div className="flex gap-2 mb-6 border-b">
         {(['standings', 'calendar'] as const).map((tab) => (
           <button
@@ -55,7 +57,6 @@ export default function PublicTournamentPage() {
         ))}
       </div>
 
-      {/* Standings tab */}
       {activeTab === 'standings' && (
         standingsLoading ? (
           <p className="text-sm text-gray-500">Caricamento classifica...</p>
@@ -87,7 +88,7 @@ export default function PublicTournamentPage() {
                         <td className="py-2 pr-3 text-gray-500">{e.position}</td>
                         <td className="py-2 pr-3 font-medium">
                           <Link
-                            href={`/t/${tournamentId}/team/${e.team_id}`}
+                            href={`/t/${slug}/team/${e.team_id}`}
                             className="hover:text-blue-600 hover:underline"
                           >
                             {e.team_name}
@@ -113,7 +114,6 @@ export default function PublicTournamentPage() {
         )
       )}
 
-      {/* Calendar tab */}
       {activeTab === 'calendar' && (
         matchesLoading ? (
           <p className="text-sm text-gray-500">Caricamento calendario...</p>

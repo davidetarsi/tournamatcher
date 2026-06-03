@@ -31,8 +31,8 @@ async function publicFetch<T = unknown>(path: string, options: RequestInit = {})
   return res.json() as Promise<T>
 }
 
-export async function createTournament(data: TournamentCreate, token: string): Promise<{ tournament_id: string }> {
-  return apiFetch<{ tournament_id: string }>('/tournaments', token, { method: 'POST', body: JSON.stringify(data) })
+export async function createTournament(data: TournamentCreate, token: string): Promise<{ tournament_id: string; slug: string }> {
+  return apiFetch<{ tournament_id: string; slug: string }>('/tournaments', token, { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function patchTeam(tId: string, teamId: string, data: TeamUpdate, token: string): Promise<{ status: string }> {

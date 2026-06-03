@@ -31,7 +31,7 @@ describe('TournamentWizard', () => {
   })
 
   it('calls createTournament and redirects on submit', async () => {
-    const mockCreate = jest.spyOn(api, 'createTournament').mockResolvedValue({ tournament_id: 't-new' })
+    const mockCreate = jest.spyOn(api, 'createTournament').mockResolvedValue({ tournament_id: 't-new', slug: 'torneo-2026' })
     const { push } = require('next/navigation').useRouter()
     render(<TournamentWizard />)
     fireEvent.click(screen.getByText(/calcetto/i))

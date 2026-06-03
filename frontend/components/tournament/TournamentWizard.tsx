@@ -69,7 +69,7 @@ export function TournamentWizard() {
         },
         token
       )
-      router.push(`/admin/${result.tournament_id}`)
+      router.push(`/t/${result.slug}/admin`)
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : 'Errore durante la creazione del torneo')
     } finally {

@@ -22,11 +22,20 @@ export default function AdminPage() {
     )
   }
 
+  const isDev = process.env.NEXT_PUBLIC_DEV_BYPASS_AUTH === 'true'
+
   return (
     <main className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">I tuoi tornei</h1>
-        <Button onClick={() => router.push('/admin/new')}>Nuovo torneo</Button>
+        <div className="flex gap-2">
+          {isDev && (
+            <Button variant="outline" onClick={() => router.push('/admin/dev-tournament')}>
+              [Dev] Apri dashboard
+            </Button>
+          )}
+          <Button onClick={() => router.push('/admin/new')}>Nuovo torneo</Button>
+        </div>
       </div>
       <TournamentList />
     </main>
