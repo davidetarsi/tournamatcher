@@ -1,5 +1,11 @@
 export type FieldType = 'text' | 'email' | 'number' | 'date'
 
+export interface CampoGiornoSlots {
+  campo: number
+  giorno: number
+  slots: string[]  // ["15:00", "16:30", ...]
+}
+
 export interface SchemaField {
   key: string
   type: FieldType
@@ -39,6 +45,8 @@ export interface TournamentSchema {
   tiebreaker_rules: TiebreakerRule[]
   num_giorni: number
   num_slots_per_giorno: number
+  num_campi: number
+  slot_orari: CampoGiornoSlots[]
   max_public_teams: number
 }
 

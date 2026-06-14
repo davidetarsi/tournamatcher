@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 
 class TeamField(BaseModel):
@@ -27,6 +27,12 @@ class PointsSystem(BaseModel):
     draws_allowed: bool = True
 
 
+class CampoGiornoSlots(BaseModel):
+    campo: int
+    giorno: int
+    slots: List[str]  # ["15:00", "16:30", ...]
+
+
 class SchemaConfig(BaseModel):
     sport: str
     max_teams: int
@@ -42,6 +48,8 @@ class SchemaConfig(BaseModel):
     )
     num_giorni: int = 1
     num_slots_per_giorno: int = 1
+    num_campi: int = 1
+    slot_orari: List[CampoGiornoSlots] = Field(default_factory=list)
     max_public_teams: int = 0
 
 
