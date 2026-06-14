@@ -30,16 +30,16 @@ const TEMPLATES: Record<string, { sport: string; team_fields: SchemaField[] }> =
   personalizzato: { sport: '', team_fields: [] },
 }
 
-function computeNumGiorni(
+function computeNumSlotsPerGiorno(
   maxTeams: number,
   teamsPerGroup: number,
-  numSlotsPerGiorno: number,
+  numGiorni: number,
   numCampi: number
 ): number | null {
-  if (maxTeams <= 0 || teamsPerGroup <= 0 || numSlotsPerGiorno <= 0 || numCampi <= 0) return null
+  if (maxTeams <= 0 || teamsPerGroup <= 0 || numGiorni <= 0 || numCampi <= 0) return null
   if (maxTeams % teamsPerGroup !== 0) return null
   const numerator = maxTeams * (teamsPerGroup - 1)
-  const denominator = numSlotsPerGiorno * numCampi * 2
+  const denominator = numGiorni * numCampi * 2
   if (numerator % denominator !== 0) return null
   return numerator / denominator
 }
@@ -98,7 +98,7 @@ export function TournamentWizard() {
   const [maxTeams, setMaxTeams] = useState(8)
   const [teamsPerGroup, setTeamsPerGroup] = useState(4)
   const [numCampi, setNumCampi] = useState(1)
-  const [numSlotsPerGiorno, setNumSlotsPerGiorno] = useState(3)
+  const [numGiorni, setNumGiorni] = useState(3)
 
   // Step 3 — slot orari
   const [slotOrari, setSlotOrari] = useState<CampoGiornoSlots[]>([])
@@ -114,7 +114,7 @@ export function TournamentWizard() {
   const { getToken } = useFirebaseToken()
   const router = useRouter()
 
-  const numGiorni = computeNumGiorni(maxTeams, teamsPerGroup, numSlotsPerGiorno, numCampi)
+  const numSlotsPerGiorno = computeNumSlotsPerGiorno(maxTeams, teamsPerGroup, numGiorni, numCampi)
   const numGironi = maxTeams > 0 && teamsPerGroup > 0 && maxTeams % teamsPerGroup === 0
     ? maxTeams / teamsPerGroup
     : null
@@ -131,7 +131,7 @@ export function TournamentWizard() {
   }
 
   const goToStep3 = () => {
-    if (numGiorni === null) return
+    if (numSlotsPerGiorno === null) return
     setSlotOrari(initSlotOrari(numCampi, numGiorni, numSlotsPerGiorno, slotOrari))
     setStep(3)
   }
@@ -169,7 +169,7 @@ export function TournamentWizard() {
             points_system: { win: 3, draw: 1, loss: 0, draws_allowed: true },
             tiebreaker_rules: ['goal_difference', 'goals_for', 'head_to_head'],
             num_giorni: numGiorni,
-            num_slots_per_giorno: numSlotsPerGiorno,
+            num_slots_per_giorno: numSlotsPerGiorno!,
             num_campi: numCampi,
             slot_orari: slotOrari,
             max_public_teams: 0,
@@ -258,12 +258,12 @@ export function TournamentWizard() {
         ? 'Le squadre non si dividono equamente nei gironi.'
         : null
     const formulaError =
-      !gironiError && numGiorni === null && maxTeams > 0 && teamsPerGroup > 0
-        ? 'Combinazione non valida: le partite totali non si dividono esattamente. Prova a cambiare il numero di slot o di campi.'
+      !gironiError && numSlotsPerGiorno === null && maxTeams > 0 && teamsPerGroup > 0
+        ? 'Combinazione non valida: le partite totali non si dividono esattamente in queste giornate. Prova a cambiare il numero di giornate o di campi.'
         : null
 
     const canProceed =
-      name.trim().length > 0 && numGiorni !== null && !gironiError
+      name.trim().length > 0 && numSlotsPerGiorno !== null && !gironiError
 
     return (
       <div className="space-y-5 max-w-md">
@@ -320,27 +320,28 @@ export function TournamentWizard() {
             />
           </div>
           <div>
-            <Label htmlFor="slots-per-giorno">Slot per giorno / campo</Label>
+            <Label htmlFor="num-giorni">Giornate disponibili</Label>
             <Input
-              id="slots-per-giorno"
+              id="num-giorni"
               type="number"
               min={1}
-              value={numSlotsPerGiorno}
-              onChange={(e) => setNumSlotsPerGiorno(Number(e.target.value))}
+              value={numGiorni}
+              onChange={(e) => setNumGiorni(Number(e.target.value))}
             />
           </div>
         </div>
 
         {formulaError && <p className="text-sm text-red-600">{formulaError}</p>}
 
-        {numGiorni !== null && (
+        {numSlotsPerGiorno !== null && (
           <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm">
             <span className="font-semibold text-blue-800">
-              Giornate necessarie: {numGiorni}
+              Partite per giornata: {numSlotsPerGiorno}
+              {numCampi > 1 ? ` per campo` : ''}
             </span>
             <span className="text-blue-600 ml-2">
               ({maxTeams * (teamsPerGroup - 1) / 2} partite totali
-              {numCampi > 1 ? `, ${numCampi} campi in parallelo` : ''})
+              {numCampi > 1 ? `, ${numCampi} in parallelo` : ''})
             </span>
           </div>
         )}
@@ -373,8 +374,8 @@ export function TournamentWizard() {
 
         <SlotOrariStep
           numCampi={numCampi}
-          numGiorni={numGiorni!}
-          numSlotsPerGiorno={numSlotsPerGiorno}
+          numGiorni={numGiorni}
+          numSlotsPerGiorno={numSlotsPerGiorno!}
           value={slotOrari}
           onChange={setSlotOrari}
         />
