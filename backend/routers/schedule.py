@@ -1,10 +1,12 @@
 from __future__ import annotations
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
+from google.cloud import firestore as _firestore
 from auth import verify_token
 from db import get_db
 from limiter import limiter
 from scheduler import crea_gironi_bilanciati, generate_schedule, parse_slot_id
+from standings import compute_standings, DEFAULT_POINTS_SYSTEM, DEFAULT_TIEBREAKER_RULES
 
 router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["schedule"])
 
@@ -78,6 +80,9 @@ async def generate_schedule_endpoint(
     if tournament.to_dict().get("admin_uid") != user["uid"]:
         raise HTTPException(403, "Non autorizzato")
 
+    if tournament.to_dict().get("status") == "scheduled":
+        raise HTTPException(409, "Calendario già generato per questo torneo")
+
     schema_doc = tournament_ref.collection("config").document("schema").get()
     if not schema_doc.exists:
         raise HTTPException(404, "Schema non trovato")
@@ -117,23 +122,45 @@ async def generate_schedule_endpoint(
     if calendario is None:
         raise HTTPException(400, "Impossibile generare il calendario con i vincoli attuali")
 
-    # Salva su Firestore via Admin SDK
+    # Scrittura ATOMICA: partite + classifiche azzerate + stato in un solo batch.
+    # Le classifiche si calcolano in memoria dalle partite appena generate
+    # (compute_standings è pura): zero letture Firestore aggiuntive.
     batch = db.batch()
     matches_col = tournament_ref.collection("matches")
-    total_matches = 0
+    match_dicts: list[dict] = []
     for giorno, slots in calendario.items():
         for slot, partite in slots.items():
             for partita in partite:
-                match_ref = matches_col.document(str(uuid.uuid4()))
-                batch.set(match_ref, {
+                match_data = {
                     "giorno": giorno,
                     "slot": slot,
                     "girone": partita["girone"],
                     "squadre": partita["squadre"],
-                })
-                total_matches += 1
+                    "home_goals": None,
+                    "away_goals": None,
+                }
+                batch.set(matches_col.document(str(uuid.uuid4())), match_data)
+                match_dicts.append(match_data)
+
+    team_names = {tid: t["display_name"] for tid, t in teams.items()}
+    standings = compute_standings(
+        match_dicts,
+        team_names,
+        schema.get("points_system", DEFAULT_POINTS_SYSTEM),
+        schema.get("tiebreaker_rules", list(DEFAULT_TIEBREAKER_RULES)),
+    )
+    standings_col = tournament_ref.collection("standings")
+    for group_id, entries in standings.items():
+        batch.set(
+            standings_col.document(str(group_id)),
+            {
+                "group_name": str(group_id),
+                "computed_at": _firestore.SERVER_TIMESTAMP,
+                "entries": [e.model_dump() for e in entries],
+            },
+        )
+
+    batch.update(tournament_ref, {"status": "scheduled"})
     batch.commit()
 
-    tournament_ref.update({"status": "scheduled"})
-
-    return {"status": "generated", "matches": total_matches}
+    return {"status": "generated", "matches": len(match_dicts)}

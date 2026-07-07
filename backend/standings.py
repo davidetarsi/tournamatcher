@@ -186,9 +186,9 @@ def _update_standings_in_transaction(
     standings_col = tournament_ref.collection("standings")
     for group_id, entries in standings.items():
         transaction.set(
-            standings_col.document(group_id),
+            standings_col.document(str(group_id)),
             {
-                "group_name": group_id,
+                "group_name": str(group_id),
                 "computed_at": _firestore.SERVER_TIMESTAMP,
                 "entries": [e.model_dump() for e in entries],
             },

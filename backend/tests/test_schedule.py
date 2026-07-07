@@ -74,9 +74,13 @@ def test_generate_schedule_success(client, mock_db):
     assert data["status"] == "generated"
     assert data["matches"] > 0  # scheduler must have produced matches
 
-    # Verify Firestore side-effects
-    mock_batch.commit.assert_called_once()  # batch write happened
-    tournament_ref.update.assert_called_once_with({"status": "scheduled"})  # status updated
+    # Verify Firestore side-effects: tutto in un solo batch atomico
+    mock_batch.commit.assert_called_once()
+    # 2 partite (2 gironi da 2 squadre) + 2 documenti standings azzerati
+    assert mock_batch.set.call_count == 4
+    # lo stato cambia DENTRO il batch, non con un update separato
+    mock_batch.update.assert_called_once_with(tournament_ref, {"status": "scheduled"})
+    tournament_ref.update.assert_not_called()
 
 def test_generate_schedule_non_admin_returns_403(client, mock_db):
     tournament_doc = MagicMock()
@@ -129,3 +133,22 @@ def test_generate_schedule_team_without_availability_returns_400(client, mock_db
 
     assert response.status_code == 400
     assert "Aquile" in response.json()["detail"]
+
+
+def test_generate_schedule_already_scheduled_returns_409(client, mock_db):
+    tournament_doc = MagicMock()
+    tournament_doc.exists = True
+    tournament_doc.to_dict.return_value = {"admin_uid": "admin-uid", "status": "scheduled"}
+
+    tournament_ref = MagicMock()
+    tournament_ref.get.return_value = tournament_doc
+    mock_db.collection.return_value.document.return_value = tournament_ref
+
+    with patch("auth.firebase_auth.verify_id_token", return_value=ADMIN_TOKEN):
+        response = client.post(
+            f"/tournaments/{TOURNAMENT_ID}/generate-schedule",
+            headers={"Authorization": "Bearer fake.token"},
+        )
+
+    assert response.status_code == 409
+    mock_db.batch.assert_not_called()
