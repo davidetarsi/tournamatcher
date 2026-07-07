@@ -60,11 +60,6 @@ class TournamentCreate(BaseModel):
     logo_base64: Optional[str] = None
 
 
-class TeamRegister(BaseModel):
-    invite_code: Optional[str] = None
-    fields: dict
-
-
 class TeamPublicRegister(BaseModel):
     fields: dict
     invite_code: Optional[str] = None

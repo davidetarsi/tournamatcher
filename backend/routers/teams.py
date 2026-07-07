@@ -8,7 +8,7 @@ from auth import verify_token
 from db import get_db
 from dependencies import verify_team_jwt
 from limiter import limiter
-from models import TeamRegister, AvailabilitySlot, TeamPublicRegister, TeamLoginRequest, PlayerUpdate
+from models import AvailabilitySlot, TeamPublicRegister, TeamLoginRequest, PlayerUpdate
 from schema_engine import build_team_model, sanitize
 from google.cloud import firestore as _firestore
 from services.auth_service import generate_pin, hash_pin, create_team_token
@@ -82,55 +82,6 @@ def _register_in_transaction(transaction, tournament_ref, sanitized_fields, payl
 class TeamUpdate(BaseModel):
     forza: Optional[int] = None       # 1-5, set by admin
     confirmed: Optional[bool] = None  # admin confirms team
-
-
-@router.post("/teams", status_code=201)
-@limiter.limit("5/minute")
-async def register_team(
-    request: Request,
-    tournament_id: str,
-    payload: TeamRegister,
-    user: dict = Depends(verify_token),
-    db=Depends(get_db),
-):
-    schema_doc = (
-        db.collection("tournaments")
-        .document(tournament_id)
-        .collection("config")
-        .document("schema")
-        .get()
-    )
-    if not schema_doc.exists:
-        raise HTTPException(404, "Torneo non trovato")
-
-    schema = schema_doc.to_dict()
-    TeamModel = build_team_model(schema)
-
-    try:
-        validated = TeamModel(**payload.fields)
-    except Exception as e:
-        raise HTTPException(422, str(e))
-
-    sanitized_data = {
-        k: sanitize(v) if isinstance(v, str) else v
-        for k, v in validated.model_dump().items()
-    }
-
-    team_id = str(uuid.uuid4())
-    ref = (
-        db.collection("tournaments")
-        .document(tournament_id)
-        .collection("teams")
-        .document(team_id)
-    )
-    ref.set({
-        **sanitized_data,
-        "owner_uid": user["uid"],
-        "confirmed": False,
-        "players": [],
-    })
-
-    return {"team_id": team_id}
 
 
 @router.put("/teams/{team_id}/availability")
