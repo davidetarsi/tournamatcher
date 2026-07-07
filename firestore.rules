@@ -6,6 +6,12 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
+    function isAdmin(tournamentId) {
+      return request.auth != null &&
+        get(/databases/$(database)/documents/tournaments/$(tournamentId))
+          .data.admin_uid == request.auth.uid;
+    }
+
     match /tournament_slugs/{slug} {
       allow read: if true;
       allow write: if false;
@@ -21,7 +27,9 @@ service cloud.firestore {
       }
 
       match /teams/{teamId} {
-        allow read: if isOwner(resource.data.owner_uid);
+        // isAdmin non dipende da resource.data → consente anche le query
+        // (onSnapshot su tutta la collection) dalla dashboard admin.
+        allow read: if isAdmin(tournamentId) || isOwner(resource.data.owner_uid);
         allow write: if false;
       }
 
