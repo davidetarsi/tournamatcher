@@ -1,0 +1,11 @@
+name = "tournament-frontend"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare Pages usa questo file solo per i compatibility_flags.
+# Il resto della configurazione (build command, output dir, env vars)
+# si imposta nel dashboard Cloudflare Pages:
+#
+#   Build command:    npx @cloudflare/next-on-pages@1
+#   Output directory: .vercel/output/static
+#   Root directory:   frontend

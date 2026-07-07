@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { getTournamentBySlug } from '@/lib/api'
 import TournamentPublicClient from './TournamentPublicClient'
 
+export const runtime = 'edge'
+
 type Props = { params: { slug: string } }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
