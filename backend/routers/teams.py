@@ -161,18 +161,7 @@ async def update_availability(
         .collection("teams")
         .document(team_id)
     )
-    slots_col = team_ref.collection("availability_slots")
-
-    existing = slots_col.stream()
-    delete_batch = db.batch()
-    for doc in existing:
-        delete_batch.delete(doc.reference)
-    delete_batch.commit()
-
-    write_batch = db.batch()
-    for slot in slots:
-        write_batch.set(slots_col.document(slot.slot_id), slot.model_dump())
-    write_batch.commit()
+    team_ref.update({"availability": [slot.model_dump() for slot in slots]})
 
     return {"updated": len(slots)}
 

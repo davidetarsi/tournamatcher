@@ -94,11 +94,6 @@ def _setup_availability_mock(mock_db, past_deadline=False):
     # schema chain: .collection.rv.document.rv.collection.rv.document.rv.get() -> schema_doc
     mock_db.collection.return_value.document.return_value \
         .collection.return_value.document.return_value.get.return_value = schema_doc
-    # slots stream (one level deeper): .collection.rv.document.rv.collection.rv.document.rv.collection.rv.stream()
-    mock_db.collection.return_value.document.return_value \
-        .collection.return_value.document.return_value \
-        .collection.return_value.stream.return_value = []
-    mock_db.batch.return_value = MagicMock()
 
 
 def test_update_availability_with_team_jwt(client, mock_db):
