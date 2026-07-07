@@ -11,7 +11,6 @@ TOURNAMENT_PAYLOAD = {
         "max_teams": 8,
         "teams_per_group": 4,
         "public": False,
-        "invite_codes": {"enabled": False, "partial": False},
         "team_fields": [
             {"key": "name", "type": "text", "required": True, "max_length": 100},
             {"key": "contact_email", "type": "email", "required": True},

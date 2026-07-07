@@ -31,7 +31,6 @@ export function SchemaEditor({ tournamentId }: Props) {
   const [tiebreakerRules, setTiebreakerRules] = useState<TiebreakerRule[]>(['goal_difference', 'goals_for', 'head_to_head'])
   const [numGiorni, setNumGiorni] = useState(1)
   const [numSlotsPerGiorno, setNumSlotsPerGiorno] = useState(1)
-  const [maxPublicTeams, setMaxPublicTeams] = useState(0)
 
   useEffect(() => {
     const ref = doc(db, 'tournaments', tournamentId, 'config', 'schema')
@@ -44,7 +43,6 @@ export function SchemaEditor({ tournamentId }: Props) {
         if (s.tiebreaker_rules) setTiebreakerRules(s.tiebreaker_rules as TiebreakerRule[])
         if (s.num_giorni) setNumGiorni(s.num_giorni)
         if (s.num_slots_per_giorno) setNumSlotsPerGiorno(s.num_slots_per_giorno)
-        if (s.max_public_teams !== undefined) setMaxPublicTeams(s.max_public_teams)
       }
     })
   }, [tournamentId])
@@ -62,7 +60,7 @@ export function SchemaEditor({ tournamentId }: Props) {
     setSaveError(null)
     try {
       const token = await getToken()
-      await updateSchema(tournamentId, { ...schema, team_fields: fields, points_system: ps, tiebreaker_rules: tiebreakerRules, num_giorni: numGiorni, num_slots_per_giorno: numSlotsPerGiorno, max_public_teams: maxPublicTeams }, token)
+      await updateSchema(tournamentId, { ...schema, team_fields: fields, points_system: ps, tiebreaker_rules: tiebreakerRules, num_giorni: numGiorni, num_slots_per_giorno: numSlotsPerGiorno }, token)
       setSaved(true)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Errore durante il salvataggio')
@@ -202,18 +200,6 @@ export function SchemaEditor({ tournamentId }: Props) {
               onChange={(e) => setNumSlotsPerGiorno(Math.max(1, parseInt(e.target.value) || 1))}
             />
           </div>
-          {schema?.invite_codes?.partial && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Max iscrizioni pubbliche</label>
-              <Input
-                type="number"
-                min={0}
-                className="w-24"
-                value={maxPublicTeams}
-                onChange={(e) => setMaxPublicTeams(Math.max(0, parseInt(e.target.value) || 0))}
-              />
-            </div>
-          )}
         </div>
       </div>
 

@@ -223,12 +223,10 @@ async def get_registration_config(
     return {
         "name": t_data["name"],
         "sport": schema.get("sport", ""),
-        "invite_codes": schema.get("invite_codes", {"enabled": False, "partial": False}),
         "team_fields": schema.get("team_fields", []),
         "player_fields": schema.get("player_fields", []),
         "num_giorni": schema.get("num_giorni", 1),
         "num_slots_per_giorno": schema.get("num_slots_per_giorno", 1),
-        "max_public_teams": schema.get("max_public_teams", 0),
         "max_teams": schema.get("max_teams", 0),
         "start_date": schema.get("start_date"),
         "edit_deadline": schema.get("edit_deadline"),

@@ -57,7 +57,7 @@ def _make_availability_jwt(tournament_id=TOURNAMENT_ID, team_id=TEAM_ID):
 def _setup_availability_mock(mock_db, past_deadline=False):
     schema_doc = MagicMock()
     schema_doc.exists = True
-    d: dict = {"team_fields": [], "invite_codes": {"enabled": False}}
+    d: dict = {"team_fields": []}
     if past_deadline:
         d["edit_deadline"] = "2020-01-01T00:00:00Z"
     schema_doc.to_dict.return_value = d

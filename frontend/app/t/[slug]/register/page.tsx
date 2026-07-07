@@ -18,7 +18,6 @@ export default function RegisterPage() {
   const [config, setConfig] = useState<RegistrationConfig | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
-  const [inviteCode, setInviteCode] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -44,15 +43,13 @@ export default function RegisterPage() {
     try {
       const result = await registerTeam(tournamentId, {
         fields: fieldValues,
-        invite_code: inviteCode || undefined,
         availability_slots: slots,
       })
       setCompletedPin(result.team_code_plain)
       setCompletedTeamId(result.team_id)
     } catch (err) {
       if (err instanceof ApiError) {
-        if (err.status === 403) setSubmitError('Codice invito non valido o iscrizione su invito.')
-        else if (err.status === 409) setSubmitError('Posti esauriti per questa categoria.')
+        if (err.status === 409) setSubmitError('Iscrizioni chiuse: posti esauriti.')
         else if (err.status === 422) setSubmitError('Dati non validi. Controlla i campi.')
         else setSubmitError('Errore durante la registrazione. Riprova.')
       } else {
@@ -124,22 +121,6 @@ export default function RegisterPage() {
             />
           </div>
         ))}
-
-        {config!.invite_codes.enabled && (
-          <div>
-            <label className="text-sm font-medium block mb-1">
-              Codice invito
-              {!config!.invite_codes.partial && <span className="text-red-500 ml-1">*</span>}
-            </label>
-            <Input
-              value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
-              required={!config!.invite_codes.partial}
-              placeholder="Es. ABCD1234"
-              className="font-mono"
-            />
-          </div>
-        )}
 
         <div>
           <label className="text-sm font-medium block mb-2">Disponibilità</label>

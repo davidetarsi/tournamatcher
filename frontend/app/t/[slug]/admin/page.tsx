@@ -4,7 +4,6 @@ import { useParams } from 'next/navigation'
 import { useSlugResolution } from '@/lib/hooks/useSlugResolution'
 import { useTournament } from '@/lib/hooks/useTournament'
 import { TeamTable } from '@/components/tournament/TeamTable'
-import { InviteCodesPanel } from '@/components/tournament/InviteCodesPanel'
 import { SchedulePanel } from '@/components/tournament/SchedulePanel'
 import { ResultsTab } from '@/components/tournament/ResultsTab'
 import { StandingsTab } from '@/components/tournament/StandingsTab'
@@ -36,7 +35,6 @@ export default function AdminDashboardPage() {
       <Tabs defaultValue="teams">
         <TabsList>
           <TabsTrigger value="teams">Squadre</TabsTrigger>
-          <TabsTrigger value="invite">Invite Codes</TabsTrigger>
           <TabsTrigger value="schedule">Calendario</TabsTrigger>
           <TabsTrigger value="results">Risultati</TabsTrigger>
           <TabsTrigger value="standings">Classifiche</TabsTrigger>
@@ -44,9 +42,6 @@ export default function AdminDashboardPage() {
         </TabsList>
         <TabsContent value="teams" className="mt-4">
           <TeamTable tournamentId={tournamentId!} />
-        </TabsContent>
-        <TabsContent value="invite" className="mt-4">
-          <InviteCodesPanel tournamentId={tournamentId!} />
         </TabsContent>
         <TabsContent value="schedule" className="mt-4">
           <SchedulePanel tournamentId={tournamentId!} />

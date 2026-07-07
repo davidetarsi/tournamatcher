@@ -7,7 +7,6 @@ const mockSchema = {
   max_teams: 8,
   teams_per_group: 4,
   public: false,
-  invite_codes: { enabled: false, partial: false },
   team_fields: [{ key: 'nome', type: 'text', required: true, max_length: 100 }],
   player_fields: [],
   admin_controls: { can_set_strength: true, max_teams: 8 },

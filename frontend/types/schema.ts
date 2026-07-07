@@ -13,11 +13,6 @@ export interface SchemaField {
   max_length?: number
 }
 
-export interface InviteCodes {
-  enabled: boolean
-  partial: boolean
-}
-
 export interface AdminControls {
   can_set_strength: boolean
   max_teams: number
@@ -37,7 +32,6 @@ export interface TournamentSchema {
   max_teams: number
   teams_per_group: number
   public: boolean
-  invite_codes: InviteCodes
   team_fields: SchemaField[]
   player_fields: SchemaField[]
   admin_controls: AdminControls
@@ -47,18 +41,15 @@ export interface TournamentSchema {
   num_slots_per_giorno: number
   num_campi: number
   slot_orari: CampoGiornoSlots[]
-  max_public_teams: number
 }
 
 export interface RegistrationConfig {
   name: string
   sport: string
-  invite_codes: InviteCodes
   team_fields: SchemaField[]
   player_fields: SchemaField[]
   num_giorni: number
   num_slots_per_giorno: number
-  max_public_teams: number
   max_teams: number
   start_date: string | null
   edit_deadline: string | null

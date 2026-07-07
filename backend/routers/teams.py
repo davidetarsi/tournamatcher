@@ -27,38 +27,15 @@ class _RegistrationError(Exception):
 def _register_in_transaction(transaction, tournament_ref, sanitized_fields, payload, schema):
     stats_ref = tournament_ref.collection("metadata").document("stats")
     stats_doc = stats_ref.get(transaction=transaction)
-    stats_data = (stats_doc.to_dict() if stats_doc.exists else None) or {"public_count": 0, "invite_count": 0}
-    public_count = stats_data.get("public_count", 0)
-    invite_count = stats_data.get("invite_count", 0)
-    total_count = public_count + invite_count
+    stats_data = (stats_doc.to_dict() if stats_doc.exists else None) or {}
+    # retrocompatibilità con i vecchi contatori separati public/invite
+    team_count = stats_data.get(
+        "team_count",
+        stats_data.get("public_count", 0) + stats_data.get("invite_count", 0),
+    )
 
-    invite_cfg = schema.get("invite_codes", {"enabled": False, "partial": False})
-    max_teams = schema.get("max_teams", 0)
-    max_public = schema.get("max_public_teams", 0)
-
-    if payload.invite_code:
-        code_doc = (
-            tournament_ref.collection("config")
-            .document("invite_codes")
-            .collection("codes")
-            .document(payload.invite_code)
-            .get(transaction=transaction)
-        )
-        if not code_doc.exists:
-            raise _RegistrationError(403, "Invite code non valido")
-        via = "invite"
-        if invite_count >= (max_teams - max_public):
-            raise _RegistrationError(409, "Posti su invito esauriti")
-        new_stats = {"invite_count": invite_count + 1}
-    else:
-        if invite_cfg.get("enabled") and not invite_cfg.get("partial"):
-            raise _RegistrationError(403, "Iscrizione solo su invito")
-        via = "public"
-        if invite_cfg.get("partial") and public_count >= max_public:
-            raise _RegistrationError(409, "Posti pubblici esauriti")
-        if not invite_cfg.get("enabled") and total_count >= max_teams:
-            raise _RegistrationError(409, "Iscrizioni chiuse")
-        new_stats = {"public_count": public_count + 1}
+    if team_count >= schema.get("max_teams", 0):
+        raise _RegistrationError(409, "Iscrizioni chiuse: numero massimo di squadre raggiunto")
 
     pin = generate_pin()
     pin_hash = hash_pin(pin)
@@ -70,11 +47,10 @@ def _register_in_transaction(transaction, tournament_ref, sanitized_fields, payl
         "owner_uid": None,
         "confirmed": False,
         "team_code_hash": pin_hash,
-        "registered_via": via,
         "availability": [slot.model_dump() for slot in payload.availability_slots],
         "players": [],
     })
-    transaction.set(stats_ref, new_stats, merge=True)
+    transaction.set(stats_ref, {"team_count": team_count + 1}, merge=True)
 
     return team_id, pin
 

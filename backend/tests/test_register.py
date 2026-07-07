@@ -25,12 +25,10 @@ def _setup_registration_config(mock_db, exists=True, schema_exists=True):
     schema_doc.to_dict.return_value = {
         "sport": "calcetto",
         "max_teams": 8,
-        "invite_codes": {"enabled": False, "partial": False},
         "team_fields": [{"key": "nome", "type": "text", "required": True, "max_length": 100}],
         "player_fields": [{"key": "nome", "type": "text", "required": True, "max_length": 100}],
         "num_giorni": 3,
         "num_slots_per_giorno": 2,
-        "max_public_teams": 0,
         "start_date": None,
         "edit_deadline": None,
     }
@@ -53,6 +51,8 @@ def test_registration_config_success(client, mock_db):
     assert data["num_slots_per_giorno"] == 2
     assert data["max_teams"] == 8
     assert "team_fields" in data
+    assert "invite_codes" not in data
+    assert "max_public_teams" not in data
     assert "points_system" not in data
     assert "tiebreaker_rules" not in data
     assert "admin_controls" not in data
@@ -76,8 +76,7 @@ def test_registration_config_schema_not_found(client, mock_db):
 from unittest.mock import patch
 
 
-def _setup_register(mock_db, max_teams=8, invite_enabled=False, invite_partial=False,
-                    max_public=0, public_count=0, invite_count=0):
+def _setup_register(mock_db, max_teams=8):
     t_doc = MagicMock()
     t_doc.exists = True
     t_doc.to_dict.return_value = {"name": "Torneo Test", "admin_uid": "admin-1"}
@@ -86,16 +85,10 @@ def _setup_register(mock_db, max_teams=8, invite_enabled=False, invite_partial=F
     schema_doc.exists = True
     schema_doc.to_dict.return_value = {
         "max_teams": max_teams,
-        "invite_codes": {"enabled": invite_enabled, "partial": invite_partial},
         "team_fields": [{"key": "nome", "type": "text", "required": True, "max_length": 100}],
-        "max_public_teams": max_public,
         "num_giorni": 1,
         "num_slots_per_giorno": 1,
     }
-
-    stats_doc = MagicMock()
-    stats_doc.exists = True
-    stats_doc.to_dict.return_value = {"public_count": public_count, "invite_count": invite_count}
 
     t_ref = MagicMock()
     t_ref.get.return_value = t_doc

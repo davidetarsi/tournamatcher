@@ -2,7 +2,6 @@
 import Link from 'next/link'
 import { useTournament } from '@/lib/hooks/useTournament'
 import { TeamTable } from '@/components/tournament/TeamTable'
-import { InviteCodesPanel } from '@/components/tournament/InviteCodesPanel'
 import { SchedulePanel } from '@/components/tournament/SchedulePanel'
 import { ResultsTab } from '@/components/tournament/ResultsTab'
 import { StandingsTab } from '@/components/tournament/StandingsTab'
@@ -32,7 +31,6 @@ export default function DashboardPage({ params }: { params: { id: string } }) {
       <Tabs defaultValue="teams">
         <TabsList>
           <TabsTrigger value="teams">Squadre</TabsTrigger>
-          <TabsTrigger value="invite">Invite Codes</TabsTrigger>
           <TabsTrigger value="schedule">Calendario</TabsTrigger>
           <TabsTrigger value="results">Risultati</TabsTrigger>
           <TabsTrigger value="standings">Classifiche</TabsTrigger>
@@ -40,9 +38,6 @@ export default function DashboardPage({ params }: { params: { id: string } }) {
         </TabsList>
         <TabsContent value="teams" className="mt-4">
           <TeamTable tournamentId={params.id} />
-        </TabsContent>
-        <TabsContent value="invite" className="mt-4">
-          <InviteCodesPanel tournamentId={params.id} />
         </TabsContent>
         <TabsContent value="schedule" className="mt-4">
           <SchedulePanel tournamentId={params.id} />

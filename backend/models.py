@@ -10,11 +10,6 @@ class TeamField(BaseModel):
     max_length: Optional[int] = None
 
 
-class InviteCodes(BaseModel):
-    enabled: bool = False
-    partial: bool = False
-
-
 class AdminControls(BaseModel):
     can_set_strength: bool = True
     max_teams: int
@@ -38,7 +33,6 @@ class SchemaConfig(BaseModel):
     max_teams: int
     teams_per_group: int
     public: bool = False
-    invite_codes: InviteCodes
     team_fields: list[TeamField]
     player_fields: list[TeamField]
     admin_controls: AdminControls
@@ -50,7 +44,6 @@ class SchemaConfig(BaseModel):
     num_slots_per_giorno: int = 1
     num_campi: int = 1
     slot_orari: List[CampoGiornoSlots] = Field(default_factory=list)
-    max_public_teams: int = 0
 
 
 class TournamentCreate(BaseModel):
@@ -62,7 +55,6 @@ class TournamentCreate(BaseModel):
 
 class TeamPublicRegister(BaseModel):
     fields: dict
-    invite_code: Optional[str] = None
     availability_slots: list[AvailabilitySlot] = Field(default_factory=list)
 
 

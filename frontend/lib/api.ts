@@ -74,7 +74,6 @@ export async function registerTeam(
   tournamentId: string,
   data: {
     fields: Record<string, unknown>
-    invite_code?: string
     availability_slots: { slot_id: string; available: boolean }[]
   }
 ): Promise<{ team_id: string; team_code_plain: string }> {
