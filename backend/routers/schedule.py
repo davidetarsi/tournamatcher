@@ -1,17 +1,28 @@
+from __future__ import annotations
 import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from auth import verify_token
 from db import get_db
 from limiter import limiter
-from scheduler import crea_gironi_bilanciati, generate_schedule
+from scheduler import crea_gironi_bilanciati, generate_schedule, parse_slot_id
 
 router = APIRouter(prefix="/tournaments/{tournament_id}", tags=["schedule"])
 
 
-def _load_teams_from_firestore(db, tournament_id: str) -> dict:
+def _load_teams_from_firestore(
+    db, tournament_id: str, num_giorni: int, num_slots: int
+) -> tuple[dict, list[str]]:
     """
-    Carica squadre confermate e converte availability_slots in matrice 2D.
-    slot_id format: "giorno_slot" (e.g. "0_1" = day 0, slot 1)
+    Carica le squadre confermate leggendo il campo array `availability`
+    del documento squadra (formato slot_id: 'g1_s1', scritto da POST /register).
+
+    Returns:
+        (teams, senza_disponibilita) dove teams è
+        {team_id: {nome, display_name, forza, disponibilita: list[list[int]]}}
+        — `nome` è il team_id (chiave usata da gironi e scheduler),
+        `display_name` è il nome leggibile per le classifiche —
+        e senza_disponibilita è la lista dei nomi delle squadre confermate
+        che non hanno nessuno slot disponibile.
     """
     teams_stream = (
         db.collection("tournaments")
@@ -21,35 +32,33 @@ def _load_teams_from_firestore(db, tournament_id: str) -> dict:
         .stream()
     )
 
-    teams = {}
+    teams: dict = {}
+    senza_disponibilita: list[str] = []
     for doc in teams_stream:
         data = doc.to_dict()
-        slots_stream = doc.reference.collection("availability_slots").stream()
+        matrix = [[0] * num_slots for _ in range(num_giorni)]
+        has_available = False
+        for entry in data.get("availability", []):
+            try:
+                g, s = parse_slot_id(entry["slot_id"])
+            except (ValueError, KeyError, TypeError):
+                continue  # slot malformato: lo ignoriamo, non blocca le altre squadre
+            if g < num_giorni and s < num_slots and entry.get("available"):
+                matrix[g][s] = 1
+                has_available = True
 
-        slot_map: dict = {}
-        for s in slots_stream:
-            sd = s.to_dict()
-            parts = sd["slot_id"].split("_")
-            key = (int(parts[0]), int(parts[1]))
-            slot_map[key] = sd["available"]
-
-        if not slot_map:
+        if not has_available:
+            senza_disponibilita.append(data.get("nome", doc.id))
             continue
-
-        num_giorni = max(k[0] for k in slot_map) + 1
-        num_slots = max(k[1] for k in slot_map) + 1
-        disponibilita = [
-            [int(slot_map.get((g, s), False)) for s in range(num_slots)]
-            for g in range(num_giorni)
-        ]
 
         teams[doc.id] = {
             "nome": doc.id,
+            "display_name": data.get("nome", doc.id),
             "forza": data.get("forza", 1),
-            "disponibilita": disponibilita,
+            "disponibilita": matrix,
         }
 
-    return teams
+    return teams, senza_disponibilita
 
 
 @router.post("/generate-schedule")
@@ -75,25 +84,29 @@ async def generate_schedule_endpoint(
 
     schema = schema_doc.to_dict()
     num_gironi = schema["max_teams"] // schema["teams_per_group"]
+    num_giorni_cal = schema.get("num_giorni", 1)
+    num_slots_cal = schema.get("num_slots_per_giorno", 1)
 
-    teams = _load_teams_from_firestore(db, tournament_id)
+    teams, senza_disponibilita = _load_teams_from_firestore(
+        db, tournament_id, num_giorni_cal, num_slots_cal
+    )
+    if senza_disponibilita:
+        raise HTTPException(
+            400,
+            "Squadre confermate senza slot di disponibilità: "
+            + ", ".join(sorted(senza_disponibilita)),
+        )
     if not teams:
         raise HTTPException(400, "Nessuna squadra confermata")
 
     # Gestione squadre dispari: aggiunge BYE
     if len(teams) % schema["teams_per_group"] != 0:
-        sample_team = next(iter(teams.values()))
-        num_giorni_cal = len(sample_team["disponibilita"])
-        num_slots_cal = len(sample_team["disponibilita"][0])
         teams["BYE"] = {
             "nome": "BYE",
+            "display_name": "BYE",
             "forza": 0,
             "disponibilita": [[1] * num_slots_cal for _ in range(num_giorni_cal)],
         }
-
-    sample_team = next(iter(teams.values()))
-    num_giorni_cal = len(sample_team["disponibilita"])
-    num_slots_cal = len(sample_team["disponibilita"][0])
 
     try:
         gironi = crea_gironi_bilanciati(teams, num_gironi=num_gironi)
