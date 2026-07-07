@@ -66,3 +66,18 @@ def test_generate_schedule_returns_none_if_infeasible():
     }
     result = generate_schedule([["A", "B"]], teams_no_overlap, num_giorni=2, num_slots=2)
     assert result is None
+
+
+def test_parse_slot_id_valid():
+    from scheduler import parse_slot_id
+    assert parse_slot_id("g1_s1") == (0, 0)
+    assert parse_slot_id("g3_s2") == (2, 1)
+    assert parse_slot_id("g12_s10") == (11, 9)
+
+
+def test_parse_slot_id_invalid_format_raises():
+    from scheduler import parse_slot_id
+    import pytest
+    for bad in ("0_1", "g1s1", "g0_s1", "g1_s0", "", "giorno1_slot1"):
+        with pytest.raises(ValueError):
+            parse_slot_id(bad)

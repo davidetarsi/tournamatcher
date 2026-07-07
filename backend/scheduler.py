@@ -1,7 +1,19 @@
 from __future__ import annotations
 import random
+import re
 from itertools import combinations
 from ortools.sat.python import cp_model
+
+
+_SLOT_ID_RE = re.compile(r"^g([1-9]\d*)_s([1-9]\d*)$")
+
+
+def parse_slot_id(slot_id: str) -> tuple[int, int]:
+    """Converte 'g1_s1' (formato frontend, 1-indexed) in (giorno, slot) 0-indexed."""
+    m = _SLOT_ID_RE.match(slot_id)
+    if not m:
+        raise ValueError(f"slot_id non valido: {slot_id!r} (atteso 'g<N>_s<M>')")
+    return int(m.group(1)) - 1, int(m.group(2)) - 1
 
 
 def crea_gironi_bilanciati(
