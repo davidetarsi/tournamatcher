@@ -25,3 +25,4 @@ venv/
 # Docker
 .dockerenv
 docker-compose.override.yml
+.worktrees/
