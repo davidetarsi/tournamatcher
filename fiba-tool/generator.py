@@ -26,3 +26,31 @@ def snake_draft(squadre, num_gironi):
 def sbilanciamento(gironi):
     somme = [sum(punteggio_squadra(s) for s in g) for g in gironi]
     return max(somme) - min(somme)
+
+
+def combinazioni_valide(num_squadre, num_gironi):
+    """Coppie (giorni, slot_al_giorno) che soddisfano la capacità esatta."""
+    per_girone = num_squadre // num_gironi
+    slot_totali = num_squadre * (per_girone - 1) // 2
+    out = []
+    for giorni in range(1, slot_totali + 1):
+        slot, resto = divmod(slot_totali, giorni)
+        if resto == 0:
+            out.append((giorni, slot))
+    return out
+
+
+def valida_parametri(num_squadre, num_gironi, num_giorni, num_partite_giorno):
+    if num_gironi < 1 or num_squadre < 2:
+        raise ValueError("Servono almeno 2 squadre e 1 girone")
+    if num_squadre % num_gironi != 0:
+        raise ValueError(
+            f"{num_squadre} squadre non divisibili in {num_gironi} gironi uguali")
+    per_girone = num_squadre // num_gironi
+    slot_totali = num_squadre * (per_girone - 1) // 2
+    if num_giorni * num_partite_giorno != slot_totali:
+        valide = ", ".join(f"{g} giorni × {s} slot"
+                           for g, s in combinazioni_valide(num_squadre, num_gironi))
+        raise ValueError(
+            f"Capacità errata: servono {slot_totali} slot totali, "
+            f"ne hai {num_giorni * num_partite_giorno}. Combinazioni valide: {valide}")

@@ -1,4 +1,6 @@
-from generator import punteggio_squadra, sbilanciamento, snake_draft
+import pytest
+
+from generator import combinazioni_valide, punteggio_squadra, sbilanciamento, snake_draft, valida_parametri
 
 
 def squadra(nome, punti_giocatori):
@@ -46,3 +48,22 @@ def test_sbilanciamento():
     punti = [800, 700, 600, 500, 400, 300, 200, 100]
     gironi = snake_draft([squadra(f"S{p}", [p]) for p in punti], 2)
     assert sbilanciamento(gironi) == 0  # 800+500+400+100 == 700+600+300+200
+
+
+def test_combinazioni_valide_120x20():
+    # 120 squadre, 20 gironi → 300 slot totali: 15 giorni × 20 slot è il caso storico
+    assert (15, 20) in combinazioni_valide(120, 20)
+
+
+def test_valida_parametri_ok():
+    valida_parametri(120, 20, 15, 20)  # non deve sollevare
+
+
+def test_valida_parametri_capacita_errata():
+    with pytest.raises(ValueError, match="Combinazioni valide"):
+        valida_parametri(120, 20, 14, 20)
+
+
+def test_valida_parametri_non_divisibile():
+    with pytest.raises(ValueError, match="divisibili"):
+        valida_parametri(10, 3, 5, 2)
