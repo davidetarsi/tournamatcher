@@ -3,6 +3,12 @@
 Eseguibile standalone (vedi main() nel Task 4):
     python generator.py --squadre … --config … --output …
 """
+import argparse
+import os
+from collections import defaultdict
+from itertools import combinations
+
+from storage import load_json, save_json
 
 
 def punteggio_squadra(squadra):
@@ -54,3 +60,129 @@ def valida_parametri(num_squadre, num_gironi, num_giorni, num_partite_giorno):
         raise ValueError(
             f"Capacità errata: servono {slot_totali} slot totali, "
             f"ne hai {num_giorni * num_partite_giorno}. Combinazioni valide: {valide}")
+
+
+def genera_calendario(squadre, gironi, num_giorni, num_slots):
+    from ortools.sat.python import cp_model
+    per_id = {s["id"]: s for s in squadre}
+    partite = []
+    for gi, girone in enumerate(gironi):
+        partite += [(a["id"], b["id"], gi + 1) for a, b in combinations(girone, 2)]
+    model = cp_model.CpModel()
+    variabili = []
+    for idx, (s1, s2, _) in enumerate(partite):
+        disponibili = [
+            giorno * num_slots + slot
+            for giorno in range(num_giorni)
+            for slot in range(num_slots)
+            if per_id[s1]["disponibilita"][giorno][slot]
+            and per_id[s2]["disponibilita"][giorno][slot]]
+        if not disponibili:
+            raise ValueError(
+                f"Nessuno slot comune tra {per_id[s1]['nome']} e {per_id[s2]['nome']}: "
+                "le disponibilità sono troppo restrittive, servono più aperture")
+        variabili.append(model.NewIntVarFromDomain(
+            cp_model.Domain.FromValues(disponibili), f"m{idx}"))
+    model.AddAllDifferent(variabili)
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        raise ValueError("Nessuna soluzione trovata: le disponibilità sono troppo "
+                         "restrittive, servono più slot o più aperture")
+    calendario = {g: {s: [] for s in range(num_slots)} for g in range(num_giorni)}
+    for idx, (s1, s2, gi) in enumerate(partite):
+        v = solver.Value(variabili[idx])
+        calendario[v // num_slots][v % num_slots].append(
+            {"girone": gi, "squadre": [per_id[s1]["nome"], per_id[s2]["nome"]]})
+    return calendario
+
+
+def verifica(calendario):
+    """Warning per partite consecutive della stessa squadra nello stesso giorno."""
+    avvisi = []
+    per_squadra = defaultdict(list)
+    for giorno, slots in calendario.items():
+        for slot, partite in slots.items():
+            for p in partite:
+                for nome in p["squadre"]:
+                    per_squadra[nome].append((int(giorno), int(slot)))
+    for nome, occorrenze in sorted(per_squadra.items()):
+        per_giorno = defaultdict(list)
+        for g, s in occorrenze:
+            per_giorno[g].append(s)
+        for g, ss in per_giorno.items():
+            ss.sort()
+            for a, b in zip(ss, ss[1:]):
+                if b - a == 1:
+                    avvisi.append(f"{nome}: partite consecutive giorno {g + 1}, "
+                                  f"slot {a + 1} e {b + 1}")
+    return avvisi
+
+
+def testo_report(risultato):
+    righe = [f"Sbilanciamento gironi: {risultato['sbilanciamento']} punti", "",
+             "GIRONI:"]
+    for g in risultato["gironi"]:
+        righe.append(f"  Girone {g['numero']} ({g['punteggio_totale']} pt): "
+                     + ", ".join(g["squadre"]))
+    righe += ["", "CALENDARIO:"]
+    for giorno in sorted(risultato["calendario"], key=int):
+        righe.append(f"  Giorno {int(giorno) + 1}:")
+        slots = risultato["calendario"][giorno]
+        for slot in sorted(slots, key=int):
+            for p in slots[slot]:
+                righe.append(f"    Slot {int(slot) + 1}: {p['squadre'][0]} vs "
+                             f"{p['squadre'][1]} (Girone {p['girone']})")
+    if risultato["warnings"]:
+        righe += ["", "WARNING:"] + [f"  - {w}" for w in risultato["warnings"]]
+    return "\n".join(righe) + "\n"
+
+
+def scrivi_status(cartella, **campi):
+    save_json(os.path.join(cartella, "status.json"), {"tipo": "genera", **campi})
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--squadre", required=True)
+    ap.add_argument("--config", required=True)
+    ap.add_argument("--output", required=True)
+    args = ap.parse_args()
+    os.makedirs(args.output, exist_ok=True)
+    try:
+        scrivi_status(args.output, stato="in_corso", fase="caricamento")
+        squadre = load_json(args.squadre, {"squadre": []})["squadre"]
+        config = load_json(args.config, {})
+        valida_parametri(len(squadre), config["num_gironi"],
+                         config["num_giorni"], config["num_partite_giorno"])
+        scrivi_status(args.output, stato="in_corso", fase="gironi")
+        gironi = snake_draft(squadre, config["num_gironi"])
+        scrivi_status(args.output, stato="in_corso", fase="calendario")
+        calendario = genera_calendario(squadre, gironi,
+                                       config["num_giorni"],
+                                       config["num_partite_giorno"])
+        scrivi_status(args.output, stato="in_corso", fase="verifica")
+        avvisi = verifica(calendario)
+        risultato = {
+            "gironi": [{"numero": i + 1,
+                        "squadre": [s["nome"] for s in g],
+                        "punteggio_totale": sum(punteggio_squadra(s) for s in g)}
+                       for i, g in enumerate(gironi)],
+            "sbilanciamento": sbilanciamento(gironi),
+            "calendario": calendario,
+            "warnings": avvisi,
+            "parametri": config,
+        }
+        save_json(os.path.join(args.output, "calendario_finale.json"), risultato)
+        with open(os.path.join(args.output, "report.txt"), "w",
+                  encoding="utf-8") as f:
+            f.write(testo_report(risultato))
+        scrivi_status(args.output, stato="completato", fase="fine",
+                      warnings=len(avvisi))
+    except Exception as e:
+        scrivi_status(args.output, stato="errore", errore=str(e))
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()
