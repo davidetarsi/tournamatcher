@@ -4,6 +4,7 @@ Eseguibile standalone (vedi main() nel Task 4):
     python generator.py --squadre … --config … --output …
 """
 import argparse
+import json
 import os
 from collections import defaultdict
 from itertools import combinations
@@ -149,19 +150,30 @@ def main():
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
     os.makedirs(args.output, exist_ok=True)
+    fase = "caricamento"
     try:
-        scrivi_status(args.output, stato="in_corso", fase="caricamento")
-        squadre = load_json(args.squadre, {"squadre": []})["squadre"]
-        config = load_json(args.config, {})
-        valida_parametri(len(squadre), config["num_gironi"],
-                         config["num_giorni"], config["num_partite_giorno"])
-        scrivi_status(args.output, stato="in_corso", fase="gironi")
+        scrivi_status(args.output, stato="in_corso", fase=fase)
+        try:
+            squadre = load_json(args.squadre, {"squadre": []})["squadre"]
+            config = load_json(args.config, {})
+        except json.JSONDecodeError as e:
+            raise ValueError(f"File JSON non valido: {e}") from e
+        try:
+            valida_parametri(len(squadre), config["num_gironi"],
+                             config["num_giorni"], config["num_partite_giorno"])
+        except KeyError as e:
+            raise ValueError(
+                f"Parametro mancante in config.json: {e}") from e
+        fase = "gironi"
+        scrivi_status(args.output, stato="in_corso", fase=fase)
         gironi = snake_draft(squadre, config["num_gironi"])
-        scrivi_status(args.output, stato="in_corso", fase="calendario")
+        fase = "calendario"
+        scrivi_status(args.output, stato="in_corso", fase=fase)
         calendario = genera_calendario(squadre, gironi,
                                        config["num_giorni"],
                                        config["num_partite_giorno"])
-        scrivi_status(args.output, stato="in_corso", fase="verifica")
+        fase = "verifica"
+        scrivi_status(args.output, stato="in_corso", fase=fase)
         avvisi = verifica(calendario)
         risultato = {
             "gironi": [{"numero": i + 1,
@@ -180,7 +192,7 @@ def main():
         scrivi_status(args.output, stato="completato", fase="fine",
                       warnings=len(avvisi))
     except Exception as e:
-        scrivi_status(args.output, stato="errore", errore=str(e))
+        scrivi_status(args.output, stato="errore", fase=fase, errore=str(e))
         raise SystemExit(1)
 
 
