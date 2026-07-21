@@ -1,12 +1,19 @@
 """FastAPI: dashboard statica + API del fiba-tool. Avvio: python app.py"""
 import os
+import subprocess
+import sys
+import threading
 import uuid
+from datetime import datetime
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from generator import punteggio_squadra
+import fiba_client
+from generator import punteggio_squadra, valida_parametri
 from storage import load_json, save_json
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -103,6 +110,115 @@ def salva_config(cfg: ConfigIn):
     save_json(SQUADRE, dati)
     save_json(CONFIG, nuovo)
     return nuovo
+
+
+def nuovo_job(tipo):
+    job_id = datetime.now().strftime("%Y-%m-%d_%H%M%S") + f"-{tipo}"
+    cartella = os.path.join(OUTPUT, job_id)
+    os.makedirs(cartella, exist_ok=True)
+    return job_id, cartella
+
+
+@app.post("/api/genera")
+def genera():
+    dati = leggi_squadre()
+    cfg = load_json(CONFIG, DEFAULT_CONFIG)
+    try:
+        valida_parametri(len(dati["squadre"]), cfg["num_gironi"],
+                         cfg["num_giorni"], cfg["num_partite_giorno"])
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    job_id, cartella = nuovo_job("genera")
+    subprocess.Popen([sys.executable, os.path.join(BASE, "generator.py"),
+                      "--squadre", SQUADRE, "--config", CONFIG,
+                      "--output", cartella])
+    return {"job_id": job_id}
+
+
+@app.post("/api/fetch")
+def avvia_fetch(squadra: Optional[str] = None):
+    dati = leggi_squadre()
+    ids = [s["id"] for s in dati["squadre"] if squadra in (None, s["id"])]
+    if not ids:
+        raise HTTPException(404, "Nessuna squadra da aggiornare")
+    job_id, cartella = nuovo_job("fetch")
+    threading.Thread(target=_esegui_fetch, args=(cartella, ids),
+                     daemon=True).start()
+    return {"job_id": job_id}
+
+
+def _esegui_fetch(cartella, ids):
+    percorso_status = os.path.join(cartella, "status.json")
+    save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
+                                "fatti": 0, "totale": len(ids)})
+    sessione = fiba_client.nuova_sessione()
+    for n, sid in enumerate(ids, 1):
+        dati = leggi_squadre()  # riletto a ogni giro: minimizza le finestre di conflitto
+        squadra = next((s for s in dati["squadre"] if s["id"] == sid), None)
+        if squadra:
+            risultati = fiba_client.fetch_team_players(
+                [g["url"] for g in squadra["giocatori"]], sessione)
+            for g, r in zip(squadra["giocatori"], risultati):
+                if r["ok"]:
+                    g.update(r["dati"])
+                    g["fetch_status"] = "ok"
+                else:
+                    g["fetch_status"] = f"errore: {r['errore']}"
+            save_json(SQUADRE, dati)
+        save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
+                                    "fatti": n, "totale": len(ids)})
+    save_json(percorso_status, {"tipo": "fetch", "stato": "completato",
+                                "fatti": len(ids), "totale": len(ids)})
+
+
+def _percorso_job(job_id, nome_file):
+    if "/" in job_id or ".." in job_id:
+        raise HTTPException(400, "Id job non valido")
+    return os.path.join(OUTPUT, job_id, nome_file)
+
+
+@app.get("/api/jobs/{job_id}/status")
+def stato_job(job_id: str):
+    st = load_json(_percorso_job(job_id, "status.json"), None)
+    if st is None:
+        raise HTTPException(404, "Job non trovato")
+    return st
+
+
+@app.get("/api/runs")
+def elenco_runs():
+    out = []
+    if os.path.isdir(OUTPUT):
+        for nome in sorted(os.listdir(OUTPUT), reverse=True):
+            st = load_json(os.path.join(OUTPUT, nome, "status.json"), None)
+            if st and st.get("tipo") == "genera":
+                out.append({"id": nome, **st})
+    return out
+
+
+@app.get("/api/runs/{run_id}/calendario")
+def run_calendario(run_id: str):
+    cal = load_json(_percorso_job(run_id, "calendario_finale.json"), None)
+    if cal is None:
+        raise HTTPException(404, "Calendario non trovato")
+    return cal
+
+
+@app.get("/api/runs/{run_id}/report", response_class=PlainTextResponse)
+def run_report(run_id: str):
+    percorso = _percorso_job(run_id, "report.txt")
+    if not os.path.exists(percorso):
+        raise HTTPException(404, "Report non trovato")
+    with open(percorso, encoding="utf-8") as f:
+        return f.read()
+
+
+if os.environ.get("FIBA_FAKE"):
+    @app.get("/fake-fiba/api/v2/player/{player_id}")
+    def fake_player(player_id: str):
+        # stesso schema del payload reale (vedi ENDPOINTS.md / fiba_client.parse_player_payload)
+        return {"id": player_id, "firstName": "Giocatore", "lastName": player_id,
+                "rankingPoints": 1000}
 
 
 app.mount("/", StaticFiles(directory=os.path.join(BASE, "static"), html=True))

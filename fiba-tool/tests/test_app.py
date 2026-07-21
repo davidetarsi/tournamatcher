@@ -1,4 +1,5 @@
 import importlib
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -57,3 +58,41 @@ def test_riconferma_al_salvataggio(client):
                   "disponibilita": [[1, 0, 1], [0, 1, 1], [1, 1, 1]]}
     client.put(f"/api/squadre/{sid}", json=aggiornata)
     assert client.get("/api/squadre").json()["squadre"][0]["da_riconfermare"] is False
+
+
+def test_genera_job_e_runs(client):
+    for n, p in [("A", 400), ("B", 300), ("C", 200), ("D", 100)]:
+        client.post("/api/squadre", json={
+            "nome": n,
+            "giocatori": [{"url": f"https://play.fiba3x3.com/players/{n}",
+                           "nome": n, "ranking_points": p,
+                           "fetch_status": "ok", "fetched_at": None}],
+            "disponibilita": [[1, 1, 1], [1, 1, 1]]})
+    client.put("/api/config",
+               json={"num_gironi": 1, "num_giorni": 2, "num_partite_giorno": 3})
+    job_id = client.post("/api/genera").json()["job_id"]
+
+    for _ in range(60):  # max ~15s
+        st = client.get(f"/api/jobs/{job_id}/status").json()
+        # .get(): appena dopo il POST il sottoprocesso potrebbe non aver
+        # ancora scritto status.json (404 -> {"detail": ...}, niente "stato")
+        if st.get("stato") in ("completato", "errore"):
+            break
+        time.sleep(0.25)
+    assert st["stato"] == "completato"
+
+    runs = client.get("/api/runs").json()
+    assert runs[0]["id"] == job_id
+    cal = client.get(f"/api/runs/{job_id}/calendario").json()
+    assert cal["gironi"][0]["punteggio_totale"] == 1000
+    assert "GIRONI" in client.get(f"/api/runs/{job_id}/report").text
+
+
+def test_genera_parametri_invalidi(client):
+    client.put("/api/config",
+               json={"num_gironi": 1, "num_giorni": 5, "num_partite_giorno": 5})
+    assert client.post("/api/genera").status_code == 400
+
+
+def test_job_inesistente(client):
+    assert client.get("/api/jobs/finto/status").status_code == 404
