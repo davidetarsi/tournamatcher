@@ -147,6 +147,30 @@ def avvia_fetch(squadra: Optional[str] = None):
     return {"job_id": job_id}
 
 
+def applica_fallback_medio(dati):
+    """Passo finale del fetch: calcola la media dei ranking_points REALI (>0)
+    su tutto il pool squadre e la riassegna a TUTTI i giocatori marcati N/A o
+    già stimati (di qualunque squadra, anche da job precedenti). I giocatori in
+    "errore:" non vengono mai toccati. Se il pool non ha ancora punteggi reali,
+    non modifica nulla (i N/A restano tali finché un fetch futuro porta almeno un
+    punteggio nel pool). Muta `dati` in place; ritorna il numero di aggiornati."""
+    reali = [g["ranking_points"]
+             for s in dati["squadre"] for g in s["giocatori"]
+             if g.get("fetch_status") == "ok" and (g.get("ranking_points") or 0) > 0]
+    if not reali:
+        return 0
+    media = round(sum(reali) / len(reali))
+    aggiornati = 0
+    for s in dati["squadre"]:
+        for g in s["giocatori"]:
+            st = g.get("fetch_status") or ""
+            if st.startswith("ok: N/A") or st.startswith("ok: media stimata"):
+                g["ranking_points"] = media
+                g["fetch_status"] = f"ok: media stimata ({media})"
+                aggiornati += 1
+    return aggiornati
+
+
 def _esegui_fetch(cartella, ids):
     percorso_status = os.path.join(cartella, "status.json")
     save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
@@ -163,12 +187,20 @@ def _esegui_fetch(cartella, ids):
                 for g, r in zip(squadra["giocatori"], risultati):
                     if r["ok"]:
                         g.update(r["dati"])
-                        g["fetch_status"] = "ok"
+                        # 0 punti = giocatore non in classifica FIBA: marcato N/A,
+                        # riceverà il punteggio medio del pool nel passo finale.
+                        g["fetch_status"] = ("ok" if g["ranking_points"] > 0
+                                             else "ok: N/A (0 punti)")
                     else:
                         g["fetch_status"] = f"errore: {r['errore']}"
                 save_json(SQUADRE, dati)
             save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
                                         "fatti": n, "totale": len(ids)})
+        # Passo finale: assegna il punteggio medio del pool ai giocatori N/A
+        # (di qualunque squadra, anche marcati in job precedenti).
+        dati = leggi_squadre()
+        if applica_fallback_medio(dati):
+            save_json(SQUADRE, dati)
         save_json(percorso_status, {"tipo": "fetch", "stato": "completato",
                                     "fatti": len(ids), "totale": len(ids)})
     except Exception as e:

@@ -129,3 +129,44 @@ def test_fetch_job_e_squadra_aggiornata(client, monkeypatch):
     giocatore = client.get("/api/squadre").json()["squadre"][0]["giocatori"][0]
     assert giocatore["ranking_points"] == 500
     assert giocatore["fetch_status"] == "ok"
+
+
+def test_applica_fallback_medio_pool_vuoto_non_tocca_nulla():
+    import app
+    dati = {"squadre": [{"giocatori": [
+        {"ranking_points": 0, "fetch_status": "ok: N/A (0 punti)"}]}]}
+    assert app.applica_fallback_medio(dati) == 0
+    assert dati["squadre"][0]["giocatori"][0]["ranking_points"] == 0
+
+
+def test_applica_fallback_medio_assegna_media_ai_na():
+    import app
+    dati = {"squadre": [
+        {"giocatori": [
+            {"ranking_points": 100, "fetch_status": "ok"},
+            {"ranking_points": 300, "fetch_status": "ok"}]},
+        {"giocatori": [
+            {"ranking_points": 0, "fetch_status": "ok: N/A (0 punti)"}]},
+    ]}
+    aggiornati = app.applica_fallback_medio(dati)
+    assert aggiornati == 1
+    na = dati["squadre"][1]["giocatori"][0]
+    assert na["ranking_points"] == 200            # media di 100 e 300
+    assert na["fetch_status"] == "ok: media stimata (200)"
+
+
+def test_applica_fallback_medio_non_tocca_errori_e_aggiorna_stime_vecchie():
+    import app
+    dati = {"squadre": [
+        {"giocatori": [{"ranking_points": 400, "fetch_status": "ok"}]},
+        {"giocatori": [
+            {"ranking_points": 999, "fetch_status": "errore: profilo non trovato"},
+            {"ranking_points": 50, "fetch_status": "ok: media stimata (50)"}]},
+    ]}
+    app.applica_fallback_medio(dati)
+    errore = dati["squadre"][1]["giocatori"][0]
+    stima = dati["squadre"][1]["giocatori"][1]
+    assert errore["ranking_points"] == 999        # errore mai toccato
+    assert errore["fetch_status"] == "errore: profilo non trovato"
+    assert stima["ranking_points"] == 400         # stima vecchia ricalcolata sul pool
+    assert stima["fetch_status"] == "ok: media stimata (400)"
