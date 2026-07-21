@@ -129,3 +129,29 @@ def test_assegna_fasce_resto_tre_tutte_fascia_4():
         assert sum(1 for s in g if fasce[id(s)] == 5) == 1
     somme = [sum(fasce[id(s)] for s in g) for g in gironi]
     assert max(somme) - min(somme) == 0
+
+
+import generator
+
+
+def test_costanti_solver_esistono():
+    assert isinstance(generator.SOLVER_TIMEOUT, float)
+    assert isinstance(generator.SOLVER_GAP, float)
+
+
+def test_minimizza_consecutive_trova_zero_quando_possibile():
+    # 4 squadre, 1 girone (6 partite), 3 giorni × 2 slot: K4 ha una
+    # 1-fattorizzazione in 3 accoppiamenti perfetti → esiste una soluzione con
+    # ZERO partite consecutive (ogni squadra gioca una volta al giorno). Un
+    # solver di sola fattibilità potrebbe non trovarla; l'obiettivo deve trovarla.
+    from generator import genera_calendario, verifica
+    squadre = [{"id": n, "nome": n,
+                "giocatori": [{"ranking_points": 100}],
+                "disponibilita": [[1, 1], [1, 1], [1, 1]]}  # 3 giorni × 2 slot
+               for n in ["A", "B", "C", "D"]]
+    gironi = [squadre]  # unico girone con tutte e 4
+    calendario = genera_calendario(squadre, gironi, num_giorni=3, num_slots=2)
+    partite = [p for slots in calendario.values()
+               for ps in slots.values() for p in ps]
+    assert len(partite) == 6            # tutte le partite presenti
+    assert verifica(calendario) == []   # zero partite consecutive

@@ -11,6 +11,12 @@ from itertools import combinations
 
 from storage import load_json, save_json
 
+# Parametri del solver CP-SAT per la minimizzazione delle partite consecutive.
+# Costanti con override via env (stesso pattern di FIBA_PAUSE in fiba_client.py):
+# i test usano timeout brevi via monkeypatch/env senza aspettare 5 minuti reali.
+SOLVER_TIMEOUT = float(os.environ.get("FIBA_SOLVER_TIMEOUT", "300"))  # 5 min, tetto caso peggiore
+SOLVER_GAP = float(os.environ.get("FIBA_SOLVER_GAP", "0.01"))         # 1% di gap relativo tollerato
+
 
 def punteggio_squadra(squadra):
     punti = sorted((g.get("ranking_points") or 0 for g in squadra["giocatori"]),
@@ -115,7 +121,49 @@ def genera_calendario(squadre, gironi, num_giorni, num_slots):
         variabili.append(model.NewIntVarFromDomain(
             cp_model.Domain.FromValues(disponibili), f"m{idx}"))
     model.AddAllDifferent(variabili)
+
+    # Minimizzazione partite consecutive (OBIETTIVO MORBIDO, non vincolo).
+    # Per ogni partita decomponiamo lo slot globale in (giorno, slot_nel_giorno)
+    # con una sola uguaglianza lineare: slot_globale = giorno*num_slots + slot,
+    # con 0<=slot<num_slots → è la divisione euclidea univoca, niente modulo.
+    # Poi, per ogni squadra e ogni coppia delle sue partite, penalizziamo il caso
+    # "stesso giorno E slot adiacenti" — stessa definizione usata da verifica().
+    # AddAllDifferent resta l'unico vincolo di fattibilità: l'obiettivo sceglie
+    # solo QUALE soluzione fattibile, quindi non può mai rendere il problema
+    # infeasible (es. con disponibilità strette resta risolvibile, con qualche
+    # consecutiva in più).
+    giorno_var, slot_var = [], []
+    for idx, x in enumerate(variabili):
+        d = model.NewIntVar(0, num_giorni - 1, f"g{idx}")
+        s = model.NewIntVar(0, num_slots - 1, f"s{idx}")
+        model.Add(x == d * num_slots + s)
+        giorno_var.append(d)
+        slot_var.append(s)
+    partite_di = defaultdict(list)
+    for idx, (s1, s2, _) in enumerate(partite):
+        partite_di[s1].append(idx)
+        partite_di[s2].append(idx)
+    penalita = []
+    for indici in partite_di.values():
+        for i, j in combinations(indici, 2):
+            stesso_giorno = model.NewBoolVar("")
+            model.Add(giorno_var[i] == giorno_var[j]).OnlyEnforceIf(stesso_giorno)
+            model.Add(giorno_var[i] != giorno_var[j]).OnlyEnforceIf(stesso_giorno.Not())
+            dist = model.NewIntVar(0, num_slots, "")
+            model.AddAbsEquality(dist, slot_var[i] - slot_var[j])
+            adiacente = model.NewBoolVar("")
+            model.Add(dist == 1).OnlyEnforceIf(adiacente)
+            model.Add(dist != 1).OnlyEnforceIf(adiacente.Not())
+            consec = model.NewBoolVar("")
+            model.AddBoolAnd([stesso_giorno, adiacente]).OnlyEnforceIf(consec)
+            model.AddBoolOr([stesso_giorno.Not(), adiacente.Not()]).OnlyEnforceIf(consec.Not())
+            penalita.append(consec)
+    if penalita:
+        model.Minimize(sum(penalita))
+
     solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = SOLVER_TIMEOUT
+    solver.parameters.relative_gap_limit = SOLVER_GAP
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         raise ValueError("Nessuna soluzione trovata: le disponibilità sono troppo "
