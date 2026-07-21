@@ -518,27 +518,43 @@ git commit -m "feat(fiba-tool): badge arancione per punteggio stimato via media"
 ## Verifica finale
 
 1. `cd fiba-tool && python3 -m pytest tests/ -v` → tutti verdi (30 preesistenti + i nuovi)
-2. Benchmark manuale di scala (calibra il default 300s con numeri reali):
+2. Benchmark manuale di scala (calibra il default 300s con numeri reali). Da
+   eseguire su DUE configurazioni, perché il costo dell'obiettivo di
+   minimizzazione consecutive cresce come `partite_per_squadra²` — quindi il caso
+   peggiore NON è "tante squadre" ma "gironi grandi" (poche squadre per girone
+   producono pochissime coppie; molte squadre per girone ne producono molte):
    ```bash
    cd fiba-tool && python3 -c "
-   import json, tempfile, os, time, subprocess, sys
-   # 120 squadre, 20 gironi, 15 giorni × 20 slot (caso storico)
-   squadre = [{'id': f's{i}', 'nome': f's{i}',
-               'giocatori': [{'ranking_points': (i*37) % 5000 + 100}],
-               'disponibilita': [[1]*20 for _ in range(15)]} for i in range(120)]
-   d = tempfile.mkdtemp()
-   json.dump({'squadre': squadre}, open(f'{d}/s.json','w'))
-   json.dump({'num_gironi':20,'num_giorni':15,'num_partite_giorno':20}, open(f'{d}/c.json','w'))
-   t = time.time()
-   r = subprocess.run([sys.executable,'generator.py','--squadre',f'{d}/s.json',
-                       '--config',f'{d}/c.json','--output',f'{d}/out'])
-   print('secondi:', round(time.time()-t,1), 'exit:', r.returncode)
-   print('sbilanciamento/warnings:', {k: json.load(open(f'{d}/out/calendario_finale.json'))[k] for k in ('sbilanciamento',)}, 
-         len(json.load(open(f'{d}/out/calendario_finale.json'))['warnings']), 'warning')
+   import json, tempfile, time, subprocess, sys
+   def bench(nome, num_squadre, num_gironi, num_giorni, num_slot):
+       squadre = [{'id': f's{i}', 'nome': f's{i}',
+                   'giocatori': [{'ranking_points': (i*37) % 5000 + 100}],
+                   'disponibilita': [[1]*num_slot for _ in range(num_giorni)]}
+                  for i in range(num_squadre)]
+       d = tempfile.mkdtemp()
+       json.dump({'squadre': squadre}, open(f'{d}/s.json','w'))
+       json.dump({'num_gironi':num_gironi,'num_giorni':num_giorni,
+                  'num_partite_giorno':num_slot}, open(f'{d}/c.json','w'))
+       t = time.time()
+       r = subprocess.run([sys.executable,'generator.py','--squadre',f'{d}/s.json',
+                           '--config',f'{d}/c.json','--output',f'{d}/out'])
+       cal = json.load(open(f'{d}/out/calendario_finale.json')) if r.returncode==0 else {}
+       print(f'{nome}: {round(time.time()-t,1)}s exit={r.returncode} '
+             f'warning={len(cal.get(\"warnings\",[]))} (partite/squadra={num_squadre//num_gironi-1})')
+   # (a) caso storico: gironi piccoli (6 a girone → 10 coppie/squadra)
+   bench('120x20 gironi piccoli', 120, 20, 15, 20)
+   # (b) caso peggiore per l'obiettivo: gironi grandi (16 a girone → 105 coppie/squadra)
+   bench('32x2 gironi grandi', 32, 2, 16, 15)
    "
    ```
-   Atteso: completa entro il tetto di 300s (tipicamente molto meno grazie al gap 1%),
-   `exit: 0`. Se sistematicamente troppo lento, valutare l'abbassamento del default o
-   un gap più permissivo — ma NON in questo piano, è una calibrazione separata.
+   Atteso: entrambi completano entro il tetto di 300s (tipicamente molto meno
+   grazie al gap 1%), `exit=0`. Se il caso (b) è sistematicamente troppo lento, la
+   via di fuga documentata — da valutare SOLO se il benchmark lo dimostra, non a
+   priori — è sostituire la modellazione a coppie con una a *occupancy per-slot*
+   (booleane `occ[squadra, giorno, slot]` + penalità `AND(occ[t,g,s], occ[t,g,s+1])`),
+   che scala come `squadre × giorni × slot` invece che come `squadre × coppie`:
+   conviene solo quando i gironi sono grandi. In alternativa, abbassare il default
+   di `SOLVER_TIMEOUT` o allargare `SOLVER_GAP`. Nessuna di queste va fatta in
+   questo piano: è calibrazione empirica separata, post-misurazione.
 3. `git diff main -- copia_di_generazione_squadre.py` → vuoto (mai toccato)
 4. `git log --oneline` → un commit per task
