@@ -79,6 +79,12 @@ label{font-size:14px}
 const $ = s => document.querySelector(s);
 let config = null, squadre = [], modificaId = null;
 
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = String(s ?? '');
+  return div.innerHTML;
+}
+
 async function api(percorso, opzioni) {
   const r = await fetch('/api' + percorso, opzioni ? {
     headers: {'Content-Type': 'application/json'}, ...opzioni } : undefined);
@@ -128,14 +134,14 @@ function renderSquadre() {
   $('#tabella-squadre').innerHTML =
     '<tr><th>Nome</th><th>Punti</th><th>Giocatori</th><th></th></tr>' +
     squadre.map(s => `<tr>
-      <td>${s.nome}${s.da_riconfermare ? ' ⚠️' : ''}${incompleti(s) ? ' (dati incompleti)' : ''}</td>
+      <td>${escapeHtml(s.nome)}${s.da_riconfermare ? ' ⚠️' : ''}${incompleti(s) ? ' (dati incompleti)' : ''}</td>
       <td>${s.punteggio}</td>
       <td>${s.giocatori.map(g =>
-        `<span class="badge ${classeBadge(g)}" title="${g.fetch_status || 'mai'}"></span>${g.nome || g.url.split('/').pop()}`
+        `<span class="badge ${classeBadge(g)}" title="${escapeHtml(g.fetch_status || 'mai')}"></span>${escapeHtml(g.nome || g.url.split('/').pop())}`
       ).join(' · ')}</td>
-      <td><button class="link" onclick="aggiornaSquadra('${s.id}')">Aggiorna punti</button>
-          <button class="link" onclick="modifica('${s.id}')">Modifica</button>
-          <button class="link" onclick="elimina('${s.id}')">Elimina</button></td>
+      <td><button class="link" onclick="aggiornaSquadra('${escapeHtml(s.id)}', this)">Aggiorna punti</button>
+          <button class="link" onclick="modifica('${escapeHtml(s.id)}')">Modifica</button>
+          <button class="link" onclick="elimina('${escapeHtml(s.id)}')">Elimina</button></td>
     </tr>`).join('');
 }
 
@@ -206,8 +212,12 @@ $('#annulla-modifica').onclick = annullaModifica;
 
 async function elimina(id) {
   if (confirm('Eliminare la squadra?')) {
-    await api('/squadre/' + id, {method: 'DELETE'});
-    await carica();
+    try {
+      await api('/squadre/' + id, {method: 'DELETE'});
+      await carica();
+    } catch (e) {
+      alert('Errore: ' + e.message);
+    }
   }
 }
 
@@ -241,31 +251,52 @@ function validaParametri() {
 $('#salva-config').onclick = async () => {
   const corpo = Object.fromEntries(['num_gironi', 'num_giorni', 'num_partite_giorno']
     .map(k => [k, parseInt($('#' + k).value, 10)]));
-  await api('/config', {method: 'PUT', body: JSON.stringify(corpo)});
-  await carica();
+  try {
+    await api('/config', {method: 'PUT', body: JSON.stringify(corpo)});
+    await carica();
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  }
 };
 
-function pollJob(jobId, alTermine) {
+function pollJob(jobId, alTermine, semprealla) {
   const timer = setInterval(async () => {
     try {
       const st = await api('/jobs/' + jobId + '/status');
       $('#stato-job').textContent = st.stato === 'in_corso' ?
         `In corso: ${st.fase || ''} ${st.fatti != null ? st.fatti + '/' + st.totale : ''}` :
         st.stato === 'errore' ? 'Errore: ' + st.errore : 'Job completato';
-      if (st.stato !== 'in_corso') { clearInterval(timer); if (alTermine) alTermine(st); }
+      if (st.stato !== 'in_corso') {
+        clearInterval(timer);
+        if (semprealla) semprealla(st);
+        if (alTermine) alTermine(st);
+      }
     } catch (e) { /* status non ancora scritto: riprova al prossimo giro */ }
   }, 2000);
 }
 
-async function aggiornaSquadra(id) {
-  const {job_id} = await api('/fetch?squadra=' + id, {method: 'POST'});
-  mostra('parametri');
-  pollJob(job_id, carica);
+async function aggiornaSquadra(id, bottone) {
+  try {
+    if (bottone) bottone.disabled = true;
+    const {job_id} = await api('/fetch?squadra=' + id, {method: 'POST'});
+    mostra('parametri');
+    pollJob(job_id, carica, () => { if (bottone) bottone.disabled = false; });
+  } catch (e) {
+    if (bottone) bottone.disabled = false;
+    alert('Errore: ' + e.message);
+  }
 }
 
 $('#btn-fetch-tutti').onclick = async () => {
-  const {job_id} = await api('/fetch', {method: 'POST'});
-  pollJob(job_id, carica);
+  const bottone = $('#btn-fetch-tutti');
+  try {
+    bottone.disabled = true;
+    const {job_id} = await api('/fetch', {method: 'POST'});
+    pollJob(job_id, carica, () => { bottone.disabled = false; });
+  } catch (e) {
+    bottone.disabled = false;
+    alert('Errore: ' + e.message);
+  }
 };
 
 $('#btn-genera').onclick = async () => {
@@ -275,38 +306,51 @@ $('#btn-genera').onclick = async () => {
   if (incompleti.length) $('#avviso-incompleti').textContent =
     'Attenzione, dati incompleti (si genera comunque): ' +
     incompleti.map(s => s.nome).join(', ');
+  const bottone = $('#btn-genera');
   try {
+    bottone.disabled = true;
     const {job_id} = await api('/genera', {method: 'POST'});
-    pollJob(job_id, () => mostra('risultati'));
-  } catch (e) { $('#stato-job').textContent = 'Errore: ' + e.message; }
+    pollJob(job_id, () => mostra('risultati'), () => validaParametri());
+  } catch (e) {
+    bottone.disabled = false;
+    $('#stato-job').textContent = 'Errore: ' + e.message;
+  }
 };
 
 async function caricaRuns() {
-  const runs = await api('/runs');
-  $('#lista-runs').innerHTML = runs.length === 0 ? 'Nessuna esecuzione.' :
-    runs.map(r => `<p><button class="link" onclick="apriRun('${r.id}')">${r.id}</button>
-      — ${r.stato}${r.stato === 'errore' ? ': ' + r.errore : ''}</p>`).join('');
+  try {
+    const runs = await api('/runs');
+    $('#lista-runs').innerHTML = runs.length === 0 ? 'Nessuna esecuzione.' :
+      runs.map(r => `<p><button class="link" onclick="apriRun('${escapeHtml(r.id)}')">${escapeHtml(r.id)}</button>
+        — ${escapeHtml(r.stato)}${r.stato === 'errore' ? ': ' + escapeHtml(r.errore) : ''}</p>`).join('');
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  }
 }
 
 async function apriRun(id) {
-  const c = await api('/runs/' + id + '/calendario');
-  let html = `<h3>${id}</h3>
-    <p>Sbilanciamento gironi: <strong>${c.sbilanciamento}</strong> punti —
-    <a href="/api/runs/${id}/report" target="_blank">report completo</a></p>`;
-  html += '<table><tr><th>Girone</th><th>Punti</th><th>Squadre</th></tr>' +
-    c.gironi.map(g => `<tr><td>${g.numero}</td><td>${g.punteggio_totale}</td>
-      <td>${g.squadre.join(', ')}</td></tr>`).join('') + '</table>';
-  html += '<h4>Calendario</h4><table><tr><th>Giorno</th><th>Slot</th><th>Partita</th><th>Girone</th></tr>';
-  for (const giorno of Object.keys(c.calendario).sort((a, b) => a - b))
-    for (const slot of Object.keys(c.calendario[giorno]).sort((a, b) => a - b))
-      for (const p of c.calendario[giorno][slot])
-        html += `<tr><td>${+giorno + 1}</td><td>${+slot + 1}</td>
-          <td>${p.squadre[0]} vs ${p.squadre[1]}</td><td>${p.girone}</td></tr>`;
-  html += '</table>';
-  if (c.warnings.length)
-    html += '<div class="avviso">' + c.warnings.join('<br>') + '</div>';
-  $('#dettaglio-run').innerHTML = html;
-  $('#dettaglio-run').hidden = false;
+  try {
+    const c = await api('/runs/' + id + '/calendario');
+    let html = `<h3>${escapeHtml(id)}</h3>
+      <p>Sbilanciamento gironi: <strong>${c.sbilanciamento}</strong> punti —
+      <a href="/api/runs/${encodeURIComponent(id)}/report" target="_blank">report completo</a></p>`;
+    html += '<table><tr><th>Girone</th><th>Punti</th><th>Squadre</th></tr>' +
+      c.gironi.map(g => `<tr><td>${g.numero}</td><td>${g.punteggio_totale}</td>
+        <td>${g.squadre.map(escapeHtml).join(', ')}</td></tr>`).join('') + '</table>';
+    html += '<h4>Calendario</h4><table><tr><th>Giorno</th><th>Slot</th><th>Partita</th><th>Girone</th></tr>';
+    for (const giorno of Object.keys(c.calendario).sort((a, b) => a - b))
+      for (const slot of Object.keys(c.calendario[giorno]).sort((a, b) => a - b))
+        for (const p of c.calendario[giorno][slot])
+          html += `<tr><td>${+giorno + 1}</td><td>${+slot + 1}</td>
+            <td>${escapeHtml(p.squadre[0])} vs ${escapeHtml(p.squadre[1])}</td><td>${p.girone}</td></tr>`;
+    html += '</table>';
+    if (c.warnings.length)
+      html += '<div class="avviso">' + c.warnings.map(escapeHtml).join('<br>') + '</div>';
+    $('#dettaglio-run').innerHTML = html;
+    $('#dettaglio-run').hidden = false;
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  }
 }
 
 carica();
