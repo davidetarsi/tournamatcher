@@ -14,7 +14,7 @@ main{max-width:960px;margin:20px auto;padding:0 16px}
 table{border-collapse:collapse;width:100%}
 td,th{padding:6px 8px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
 .badge{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:3px}
-.verde{background:#2e7d32}.giallo{background:#f9a825}.rosso{background:#c62828}
+.verde{background:#2e7d32}.giallo{background:#f9a825}.rosso{background:#c62828}.arancione{background:#e67e22}
 .avviso{background:#fff3cd;border:1px solid #ffe08a;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:14px}
 .errore{background:#fdecea;border:1px solid #f5c6cb;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:14px}
 #griglia td{border:1px solid #ddd;text-align:center;padding:2px}
@@ -118,10 +118,12 @@ async function carica() {
 }
 
 function classeBadge(g) {
-  if (!g.fetched_at) return 'rosso';
-  const oggi = new Date().toISOString().slice(0, 10);
-  if (g.fetch_status !== 'ok') return 'rosso';
-  return g.fetched_at.slice(0, 10) === oggi ? 'verde' : 'giallo';
+  const st = g.fetch_status || '';
+  // Arancione = punteggio stimato (media del pool), non confermato da FIBA.
+  if (st.startsWith('ok: N/A') || st.startsWith('ok: media stimata')) return 'arancione';
+  if (!g.fetched_at || st !== 'ok') return 'rosso';
+  return g.fetched_at.slice(0, 10) === new Date().toISOString().slice(0, 10)
+    ? 'verde' : 'giallo';
 }
 
 function renderSquadre() {
