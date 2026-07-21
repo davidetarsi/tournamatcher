@@ -170,3 +170,85 @@ def test_applica_fallback_medio_non_tocca_errori_e_aggiorna_stime_vecchie():
     assert errore["fetch_status"] == "errore: profilo non trovato"
     assert stima["ranking_points"] == 400         # stima vecchia ricalcolata sul pool
     assert stima["fetch_status"] == "ok: media stimata (400)"
+
+
+def test_fetch_0_punti_marcato_na_poi_media(client, monkeypatch):
+    """Verifica il ramo 0 punti: fetch → marcato N/A → assegnato media del pool.
+
+    Crea squadra A con giocatore che ha ranking_points=600 (reale),
+    squadra B con giocatore che ha ranking_points=0 (non in classifica FIBA).
+    Dopo fetch+fallback: A rimane "ok"/600, B diventa "ok: media stimata (600)"/600.
+    """
+    squadra_a = {
+        "nome": "Rossi Leoni",
+        "giocatori": [{"url": "https://play.fiba3x3.com/players/a1", "nome": "",
+                       "ranking_points": 0, "fetch_status": "mai", "fetched_at": None}],
+        "disponibilita": [[1, 0], [0, 1]],
+    }
+    squadra_b = {
+        "nome": "Blu Aquile",
+        "giocatori": [{"url": "https://play.fiba3x3.com/players/b1", "nome": "",
+                       "ranking_points": 0, "fetch_status": "mai", "fetched_at": None}],
+        "disponibilita": [[1, 0], [0, 1]],
+    }
+
+    client.post("/api/squadre", json=squadra_a)
+    client.post("/api/squadre", json=squadra_b)
+
+    def fetch_team_players_finto(urls, session=None, pausa=None, on_progress=None):
+        """Mock che ritorna 600 punti per a1, 0 punti per b1."""
+        risultati = []
+        for url in urls:
+            if "a1" in url:
+                risultati.append({
+                    "url": url,
+                    "ok": True,
+                    "dati": {
+                        "id": "a1",
+                        "nome": "Player A",
+                        "ranking_points": 600,
+                        "fetched_at": "2026-07-21T00:00:00"
+                    }
+                })
+            elif "b1" in url:
+                risultati.append({
+                    "url": url,
+                    "ok": True,
+                    "dati": {
+                        "id": "b1",
+                        "nome": "Player B",
+                        "ranking_points": 0,
+                        "fetched_at": "2026-07-21T00:00:00"
+                    }
+                })
+        return risultati
+
+    monkeypatch.setattr(fiba_client, "fetch_team_players", fetch_team_players_finto)
+
+    job_id = client.post("/api/fetch").json()["job_id"]
+
+    # Polling finché completato o errore
+    for _ in range(60):  # max ~15s
+        st = client.get(f"/api/jobs/{job_id}/status").json()
+        if st.get("stato") in ("completato", "errore"):
+            break
+        time.sleep(0.25)
+    assert st["stato"] == "completato"
+
+    # Verifica risultati
+    squadre = client.get("/api/squadre").json()["squadre"]
+    assert len(squadre) == 2
+
+    # Ordina per nome per averle in ordine
+    squadre_sorted = sorted(squadre, key=lambda x: x["nome"])
+    giocatore_a = squadre_sorted[0]["giocatori"][0]  # Blu Aquile (b1)
+    giocatore_b = squadre_sorted[1]["giocatori"][0]  # Rossi Leoni (a1)
+
+    # Giocatore A (600 punti reali) → fetch_status "ok"
+    assert giocatore_b["ranking_points"] == 600
+    assert giocatore_b["fetch_status"] == "ok"
+
+    # Giocatore B (0 punti iniziali) → fetch_status "ok: N/A (0 punti)" durante fetch,
+    # poi applica_fallback_medio lo trasforma in media del pool (600)
+    assert giocatore_a["ranking_points"] == 600
+    assert giocatore_a["fetch_status"] == "ok: media stimata (600)"
