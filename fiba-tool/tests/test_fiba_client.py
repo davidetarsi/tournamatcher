@@ -43,3 +43,63 @@ def test_fetch_team_players_mai_tutto_o_niente(monkeypatch):
     r = fetch_team_players(urls, pausa=0)
     assert [x["ok"] for x in r] == [True, False, True]
     assert "profilo non trovato" in r[1]["errore"]
+
+
+class FakeSessionRetryOk:
+    """Sessione finta che fallisce al primo tentativo e ha successo al secondo."""
+    def __init__(self):
+        self.call_count = 0
+
+    def get(self, url, timeout=10):
+        self.call_count += 1
+        if self.call_count == 1:
+            raise ConnectionError("Primo tentativo fallisce")
+        # Secondo tentativo ha successo
+        class FakeResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {
+                    "id": "test-id",
+                    "firstName": "Test",
+                    "lastName": "Player",
+                    "rankingPoints": "100"
+                }
+        return FakeResponse()
+
+
+def test_fetch_player_retry_riuscito():
+    """Verifica che il retry riescire se la prima chiamata fallisce e la seconda ha successo."""
+    session = FakeSessionRetryOk()
+    url = "https://play.fiba3x3.com/players/test-player"
+    result = fiba_client.fetch_player(url, session=session)
+
+    # Deve aver fatto esattamente 2 tentativi (primo fallisce, secondo ha successo)
+    assert session.call_count == 2
+    # Deve ritornare i dati corretti
+    assert result["id"] == "test-id"
+    assert result["nome"] == "Test Player"
+    assert result["ranking_points"] == 100
+    assert "fetched_at" in result
+
+
+class FakeSessionRetryExhausted:
+    """Sessione finta che fallisce sempre."""
+    def __init__(self):
+        self.call_count = 0
+
+    def get(self, url, timeout=10):
+        self.call_count += 1
+        raise ConnectionError(f"Tentativo {self.call_count} fallisce")
+
+
+def test_fetch_player_retry_esaurito():
+    """Verifica che RuntimeError è sollevato dopo esattamente 2 tentativi falliti."""
+    session = FakeSessionRetryExhausted()
+    url = "https://play.fiba3x3.com/players/test-player"
+
+    with pytest.raises(RuntimeError, match="Fetch fallito"):
+        fiba_client.fetch_player(url, session=session)
+
+    # Deve aver fatto esattamente 2 tentativi
+    assert session.call_count == 2
