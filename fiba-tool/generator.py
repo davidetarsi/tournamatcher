@@ -39,17 +39,22 @@ def assegna_fasce(squadre, num_gironi):
     e non trascina più la somma del suo girone. Le prime num_gironi squadre sono
     fascia 5 (una testa di serie per girone); il resto si divide in 4 fasce il più
     possibile uguali per numero, con l'eventuale eccesso alle fasce più forti (ceil).
+    Caso speciale: se il resto ha meno di 4 squadre, tutte finiscono in fascia 4 (una
+    sola fascia), perché con così poche squadre non-teste-di-serie raggrupparle assieme
+    produce gironi più bilanciati dopo lo snake draft.
     Ritorna {id(squadra): fascia}."""
     ordinate = sorted(squadre, key=punteggio_squadra, reverse=True)
     teste_di_serie = ordinate[:num_gironi]
     resto = ordinate[num_gironi:]
+    fasce = {id(s): 5 for s in teste_di_serie}
+    if not resto:
+        return fasce
     # Se resto < 4, tutte le squadre del resto vanno nella stessa fascia (4);
     # altrimenti dividiamo in 4 fasce uguali per numero (ceil)
     if len(resto) < 4:
         dimensione = len(resto)
     else:
         dimensione = max(1, -(-len(resto) // 4))  # ceil
-    fasce = {id(s): 5 for s in teste_di_serie}
     for i, s in enumerate(resto):
         fasce[id(s)] = 4 - min(i // dimensione, 3)  # 4,3,2,1 a cascata
     return fasce

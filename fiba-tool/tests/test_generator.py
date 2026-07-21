@@ -107,3 +107,25 @@ def test_snake_draft_con_chiave_fasce_una_testa_di_serie_per_girone():
     # e le somme di fascia dei due gironi sono bilanciate (delta piccolo)
     somme_fascia = [sum(fasce[id(s)] for s in g) for g in gironi]
     assert max(somme_fascia) - min(somme_fascia) <= 1
+
+
+def test_assegna_fasce_resto_uno():
+    # 1 sola squadra oltre le teste di serie → fascia 4
+    squadre = [squadra(f"S{p}", [p]) for p in [500, 400, 300]]  # 2 gironi → resto=1
+    fasce = assegna_fasce(squadre, 2)
+    assert sorted(fasce.values(), reverse=True) == [5, 5, 4]
+
+
+def test_assegna_fasce_resto_tre_tutte_fascia_4():
+    # 6 squadre / 3 gironi → resto=3 < 4 → tutte in fascia 4 (caso speciale voluto:
+    # dà gironi bilanciati dopo lo snake). Verifica anche che lo snake distribuisca
+    # una testa di serie per girone e bilanci le somme di fascia.
+    squadre = [squadra(f"S{i}", [p]) for i, p in enumerate([600, 500, 400, 300, 200, 100])]
+    fasce = assegna_fasce(squadre, 3)
+    resto_fasce = sorted([v for v in fasce.values() if v != 5])
+    assert resto_fasce == [4, 4, 4]
+    gironi = snake_draft(squadre, 3, chiave=lambda s: fasce[id(s)])
+    for g in gironi:
+        assert sum(1 for s in g if fasce[id(s)] == 5) == 1
+    somme = [sum(fasce[id(s)] for s in g) for g in gironi]
+    assert max(somme) - min(somme) == 0
