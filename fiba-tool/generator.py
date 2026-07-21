@@ -18,16 +18,41 @@ def punteggio_squadra(squadra):
     return sum(punti[:3])
 
 
-def snake_draft(squadre, num_gironi):
-    """Distribuzione a serpente: 1→N, N→1, 1→N… Le teste di serie (top-N)
-    emergono dal primo giro. Euristica greedy, non un ottimo garantito."""
-    ordinate = sorted(squadre, key=punteggio_squadra, reverse=True)
+def snake_draft(squadre, num_gironi, chiave=punteggio_squadra):
+    """Distribuzione a serpente: 1→N, N→1, 1→N… Le teste di serie (top-N per
+    `chiave`) emergono dal primo giro. Euristica greedy, non un ottimo garantito.
+    `chiave` di default ordina per punteggio reale; il CLI passa invece la fascia
+    (vedi assegna_fasce) per un seeding insensibile agli outlier."""
+    ordinate = sorted(squadre, key=chiave, reverse=True)
     gironi = [[] for _ in range(num_gironi)]
     for i, s in enumerate(ordinate):
         giro, pos = divmod(i, num_gironi)
         idx = pos if giro % 2 == 0 else num_gironi - 1 - pos
         gironi[idx].append(s)
     return gironi
+
+
+def assegna_fasce(squadre, num_gironi):
+    """Converte i punteggi reali in fasce 1-5 per RANGO (stile seeding pot, es.
+    gironi del Mondiale FIFA). Insensibile agli outlier: guarda la posizione in
+    classifica, non il valore assoluto — un punteggio enorme diventa "il numero 1"
+    e non trascina più la somma del suo girone. Le prime num_gironi squadre sono
+    fascia 5 (una testa di serie per girone); il resto si divide in 4 fasce il più
+    possibile uguali per numero, con l'eventuale eccesso alle fasce più forti (ceil).
+    Ritorna {id(squadra): fascia}."""
+    ordinate = sorted(squadre, key=punteggio_squadra, reverse=True)
+    teste_di_serie = ordinate[:num_gironi]
+    resto = ordinate[num_gironi:]
+    # Se resto < 4, tutte le squadre del resto vanno nella stessa fascia (4);
+    # altrimenti dividiamo in 4 fasce uguali per numero (ceil)
+    if len(resto) < 4:
+        dimensione = len(resto)
+    else:
+        dimensione = max(1, -(-len(resto) // 4))  # ceil
+    fasce = {id(s): 5 for s in teste_di_serie}
+    for i, s in enumerate(resto):
+        fasce[id(s)] = 4 - min(i // dimensione, 3)  # 4,3,2,1 a cascata
+    return fasce
 
 
 def sbilanciamento(gironi):
@@ -166,7 +191,11 @@ def main():
                 f"Parametro mancante in config.json: {e}") from e
         fase = "gironi"
         scrivi_status(args.output, stato="in_corso", fase=fase)
-        gironi = snake_draft(squadre, config["num_gironi"])
+        # Seeding per fasce di rango: il bilanciamento gironi non usa i punti
+        # reali assoluti (un outlier li distorce) ma le fasce 1-5 per rango.
+        fasce = assegna_fasce(squadre, config["num_gironi"])
+        gironi = snake_draft(squadre, config["num_gironi"],
+                             chiave=lambda s: fasce[id(s)])
         fase = "calendario"
         scrivi_status(args.output, stato="in_corso", fase=fase)
         calendario = genera_calendario(squadre, gironi,

@@ -1,6 +1,6 @@
 import pytest
 
-from generator import combinazioni_valide, punteggio_squadra, sbilanciamento, snake_draft, valida_parametri
+from generator import assegna_fasce, combinazioni_valide, punteggio_squadra, sbilanciamento, snake_draft, valida_parametri
 
 
 def squadra(nome, punti_giocatori):
@@ -67,3 +67,43 @@ def test_valida_parametri_capacita_errata():
 def test_valida_parametri_non_divisibile():
     with pytest.raises(ValueError, match="divisibili"):
         valida_parametri(10, 3, 5, 2)
+
+
+def test_assegna_fasce_teste_di_serie():
+    # 2 gironi → le 2 squadre più forti sono fascia 5 (teste di serie)
+    punti = [800, 700, 600, 500, 400, 300, 200, 100]
+    squadre = [squadra(f"S{p}", [p]) for p in punti]
+    fasce = assegna_fasce(squadre, 2)
+    cinque = {s["nome"] for s in squadre if fasce[id(s)] == 5}
+    assert cinque == {"S800", "S700"}
+
+
+def test_assegna_fasce_resto_non_divisibile_per_4():
+    # 2 teste di serie + 6 resto → dimensione ceil(6/4)=2 → fasce 4,4,3,3,2,2
+    punti = [800, 700, 600, 500, 400, 300, 200, 100]
+    squadre = [squadra(f"S{p}", [p]) for p in punti]
+    fasce = assegna_fasce(squadre, 2)
+    per_nome = {s["nome"]: fasce[id(s)] for s in squadre}
+    assert [per_nome[f"S{p}"] for p in punti] == [5, 5, 4, 4, 3, 3, 2, 2]
+
+
+def test_assegna_fasce_meno_di_4_nel_resto():
+    # 2 teste di serie + 2 resto: nessuna divisione per zero, fasce valide 1..5
+    squadre = [squadra(f"S{p}", [p]) for p in [500, 400, 300, 200]]
+    fasce = assegna_fasce(squadre, 2)
+    assert sorted(fasce.values(), reverse=True) == [5, 5, 4, 4]
+
+
+def test_snake_draft_con_chiave_fasce_una_testa_di_serie_per_girone():
+    # Con un outlier enorme, il seeding per fascia mette comunque
+    # una sola testa di serie (fascia 5) per girone.
+    punti = [26009, 7062, 4985, 3883, 3883, 3883, 3883, 3883]
+    squadre = [squadra(f"S{i}", [p]) for i, p in enumerate(punti)]
+    fasce = assegna_fasce(squadre, 2)
+    gironi = snake_draft(squadre, 2, chiave=lambda s: fasce[id(s)])
+    # ogni girone ha esattamente una fascia-5
+    for g in gironi:
+        assert sum(1 for s in g if fasce[id(s)] == 5) == 1
+    # e le somme di fascia dei due gironi sono bilanciate (delta piccolo)
+    somme_fascia = [sum(fasce[id(s)] for s in g) for g in gironi]
+    assert max(somme_fascia) - min(somme_fascia) <= 1
