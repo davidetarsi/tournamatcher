@@ -151,24 +151,29 @@ def _esegui_fetch(cartella, ids):
     percorso_status = os.path.join(cartella, "status.json")
     save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
                                 "fatti": 0, "totale": len(ids)})
-    sessione = fiba_client.nuova_sessione()
-    for n, sid in enumerate(ids, 1):
-        dati = leggi_squadre()  # riletto a ogni giro: minimizza le finestre di conflitto
-        squadra = next((s for s in dati["squadre"] if s["id"] == sid), None)
-        if squadra:
-            risultati = fiba_client.fetch_team_players(
-                [g["url"] for g in squadra["giocatori"]], sessione)
-            for g, r in zip(squadra["giocatori"], risultati):
-                if r["ok"]:
-                    g.update(r["dati"])
-                    g["fetch_status"] = "ok"
-                else:
-                    g["fetch_status"] = f"errore: {r['errore']}"
-            save_json(SQUADRE, dati)
-        save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
-                                    "fatti": n, "totale": len(ids)})
-    save_json(percorso_status, {"tipo": "fetch", "stato": "completato",
-                                "fatti": len(ids), "totale": len(ids)})
+    n = 0
+    try:
+        sessione = fiba_client.nuova_sessione()
+        for n, sid in enumerate(ids, 1):
+            dati = leggi_squadre()  # riletto a ogni giro: minimizza le finestre di conflitto
+            squadra = next((s for s in dati["squadre"] if s["id"] == sid), None)
+            if squadra:
+                risultati = fiba_client.fetch_team_players(
+                    [g["url"] for g in squadra["giocatori"]], sessione)
+                for g, r in zip(squadra["giocatori"], risultati):
+                    if r["ok"]:
+                        g.update(r["dati"])
+                        g["fetch_status"] = "ok"
+                    else:
+                        g["fetch_status"] = f"errore: {r['errore']}"
+                save_json(SQUADRE, dati)
+            save_json(percorso_status, {"tipo": "fetch", "stato": "in_corso",
+                                        "fatti": n, "totale": len(ids)})
+        save_json(percorso_status, {"tipo": "fetch", "stato": "completato",
+                                    "fatti": len(ids), "totale": len(ids)})
+    except Exception as e:
+        save_json(percorso_status, {"tipo": "fetch", "stato": "errore",
+                                    "errore": str(e), "fatti": n, "totale": len(ids)})
 
 
 def _percorso_job(job_id, nome_file):

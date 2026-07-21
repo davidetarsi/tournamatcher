@@ -4,6 +4,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+import fiba_client
+
 SQUADRA = {
     "nome": "Rossi Leoni",
     "giocatori": [{"url": "https://play.fiba3x3.com/players/a1", "nome": "",
@@ -96,3 +98,34 @@ def test_genera_parametri_invalidi(client):
 
 def test_job_inesistente(client):
     assert client.get("/api/jobs/finto/status").status_code == 404
+
+
+def test_fetch_job_e_squadra_aggiornata(client, monkeypatch):
+    squadra = {
+        "nome": "Verdi Falchi",
+        "giocatori": [{"url": "https://play.fiba3x3.com/players/x1", "nome": "",
+                       "ranking_points": 0, "fetch_status": "mai", "fetched_at": None}],
+        "disponibilita": [[1, 0], [0, 1]],
+    }
+    client.post("/api/squadre", json=squadra)
+
+    def fetch_team_players_finto(urls, session=None, pausa=None, on_progress=None):
+        return [{"url": url, "ok": True,
+                 "dati": {"id": "x1", "nome": "Test Player",
+                          "ranking_points": 500, "fetched_at": "2026-07-21T00:00:00"}}
+                for url in urls]
+
+    monkeypatch.setattr(fiba_client, "fetch_team_players", fetch_team_players_finto)
+
+    job_id = client.post("/api/fetch").json()["job_id"]
+
+    for _ in range(60):  # max ~15s
+        st = client.get(f"/api/jobs/{job_id}/status").json()
+        if st.get("stato") in ("completato", "errore"):
+            break
+        time.sleep(0.25)
+    assert st["stato"] == "completato"
+
+    giocatore = client.get("/api/squadre").json()["squadre"][0]["giocatori"][0]
+    assert giocatore["ranking_points"] == 500
+    assert giocatore["fetch_status"] == "ok"
