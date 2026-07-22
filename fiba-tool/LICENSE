@@ -1,0 +1,75 @@
+FIBA Tool — Source-Available Private-Use License
+Copyright (c) 2026 Davide Tarsi <davidetarsi.dev@gmail.com>
+All rights reserved.
+
+------------------------------------------------------------------------
+In breve (riassunto NON vincolante — fanno fede i termini in inglese qui sotto):
+Puoi LEGGERE il codice e PROPORRE MODIFICHE (pull request, patch, suggerimenti).
+NON puoi usarlo, eseguirlo, copiarlo, distribuirlo o farne opere derivate senza
+il permesso scritto dell'autore. Tutti i diritti sono riservati.
+------------------------------------------------------------------------
+
+1. DEFINITIONS
+   "Software" means the source code, documentation, and other files in this
+   repository. "Author" means the copyright holder named above. "You" means any
+   person or entity accessing the Software.
+
+2. GRANT OF PERMISSION (what You MAY do)
+   Subject to full compliance with this License, the Author grants You a
+   worldwide, royalty-free, non-exclusive, non-transferable, revocable
+   permission to:
+   (a) view, read, and study the source code of the Software; and
+   (b) create modifications to the Software for the sole purpose of proposing
+       them to the Author (e.g., as a pull request, patch, or written
+       suggestion). By submitting such a proposal, You grant the Author a
+       perpetual, irrevocable, worldwide, royalty-free license to use,
+       incorporate, relicense, and distribute Your proposed modifications as
+       part of the Software.
+
+3. RESTRICTIONS (what You may NOT do)
+   Except as expressly permitted in Section 2, You may NOT, without the prior
+   written permission of the Author:
+   (a) use, run, execute, or operate the Software for any purpose, whether
+       personal, private, internal, educational, commercial, or otherwise;
+   (b) copy, reproduce, publish, or distribute the Software or any part of it;
+   (c) create, distribute, or make available works derived from the Software,
+       except modifications proposed to the Author under Section 2(b);
+   (d) sublicense, sell, rent, lease, or otherwise transfer the Software; or
+   (e) remove or alter this License or any copyright, attribution, or notice.
+
+4. NO OPEN-SOURCE / FREE-SOFTWARE GRANT
+   This is a source-available license. It is NOT an "open source" or "free
+   software" license and does not grant the freedoms defined by the Open Source
+   Initiative or the Free Software Foundation. Making the source code visible
+   does not grant any right to use it.
+
+5. RESERVATION OF RIGHTS
+   All rights not expressly granted in Section 2 are reserved by the Author. Any
+   use beyond Sections 2(a) and 2(b) requires a separate written agreement with
+   the Author.
+
+6. TERMINATION
+   Any breach of this License automatically and immediately terminates the
+   permissions granted in Section 2. The Author may also revoke those
+   permissions at any time.
+
+7. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+8. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+   OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+9. THIRD-PARTY DATA
+   The Software interacts with play.fiba3x3.com through unofficial endpoints and
+   processes data owned by FIBA and third parties. This License covers only the
+   Software itself and grants no rights over any third-party data, marks, or
+   services. You are solely responsible for complying with the terms of any
+   third-party service or data source You access through the Software.
+
+To request permission for any use beyond viewing and proposing changes, contact:
+Davide Tarsi <davidetarsi.dev@gmail.com>
