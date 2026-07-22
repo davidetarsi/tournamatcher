@@ -57,9 +57,11 @@ manuale ricevuto dal frontend tramite una funzione pura:
 
 ```python
 def normalizza_giocatore_manuale(nome, punteggio_raw):
-    """Ritorna (ranking_points|None, fetch_status). punteggio_raw è la stringa dopo
-    la virgola (o None se assente). Un punteggio valido è un intero > 0; qualunque
-    altra cosa (assente, non numerico, ≤ 0) → None e stato N/A (verrà stimato)."""
+    """Ritorna (ranking_points|None, fetch_status). punteggio_raw è il punteggio
+    numerico estratto dalla riga (gruppo 2 della regex del frontend, o None se assente).
+    Un punteggio valido è un intero > 0; qualunque altra cosa (assente, non numerico,
+    ≤ 0) → None e stato N/A (verrà stimato). Difensiva: valida a prescindere da cosa
+    manda il JS."""
 ```
 
 Regole:
@@ -103,10 +105,13 @@ punti FIBA (tipicamente migliaia–decine di migliaia)"*.
 ## 3. Dashboard
 
 - **Parsing riga** (JS, in `salva-squadra`): ogni riga della textarea → se contiene
-  `play.fiba3x3.com/players/` costruisce un giocatore-URL (come oggi); altrimenti splitta
-  su virgola in `nome` e `punteggio_raw` e costruisce un giocatore manuale con un marcatore
-  (es. `fetch_status` provvisorio `"manuale ..."`), che il backend normalizzerà al
-  salvataggio. In modifica, un giocatore manuale esistente viene ri-serializzato come
+  `play.fiba3x3.com/players/` costruisce un giocatore-URL (come oggi); altrimenti usa
+  un'espressione regolare per estrarre in modo sicuro l'eventuale punteggio numerico ancorato
+  alla FINE della riga: `/^(.*?)(?:\s*,\s*(\d+))?$/`. Il gruppo 1 diventa il `nome`, il gruppo
+  2 (se presente) diventa il `punteggio_raw`. Costruisce poi un giocatore manuale (`url = ""`)
+  con un marcatore provvisorio, che il backend normalizzerà al salvataggio via
+  `normalizza_giocatore_manuale` (rete di sicurezza: il punteggio finisce comunque validato
+  a int > 0 o None). In modifica, un giocatore manuale esistente viene ri-serializzato come
   `nome,punteggio` nella textarea.
 - **Badge** (`classeBadge`): nuovo ramo **blu** per `fetch_status` che inizia con
   `"manuale"` (con numero). I manuali-senza-numero diventano `"ok: media stimata"` → restano
@@ -127,6 +132,10 @@ punti FIBA (tipicamente migliaia–decine di migliaia)"*.
 **Unit (backend):**
 - `normalizza_giocatore_manuale`: `"1500"` → `(1500, "manuale (1500)")`; assente/`""` →
   `(None, "manuale: N/A")`; `"abc"` / `"-5"` / `"0"` → `(None, "manuale: N/A")`.
+- regex di parsing riga (se la si testa anche in isolamento, es. portata in una piccola
+  utility condivisa): `"Mario Rossi,1500"` → (`"Mario Rossi"`, `"1500"`);
+  `"Rossi, Mario"` → (`"Rossi, Mario"`, assente); `"Rossi, Mario, 1500"` →
+  (`"Rossi, Mario"`, `"1500"`); `"Team USA 2024"` → (`"Team USA 2024"`, assente).
 - riconoscimento URL vs manuale (una riga con `play.fiba3x3.com/players/` non è manuale).
 - `_esegui_fetch` salta i manuali: squadra con un manuale + un URL → il manuale conserva
   `fetch_status`/punteggio (non `errore`, non fetchato), l'URL viene fetchato (via mock).
@@ -147,6 +156,9 @@ blu, arancione (stimato). Promemoria di scala presente.
 2. **Parsing nel JS meno testato** del backend. Mitigazione: la validazione del punteggio
    (la parte che può sbagliare i numeri) è una funzione pura Python testata; il JS fa solo
    lo split, coperto dallo smoke test e dalla verifica UI manuale.
-3. **Ambiguità virgole nel nome** (es. "Rossi, Mario"): la prima virgola separa
-   nome/punteggio; se la parte dopo la virgola non è un intero valido, l'intera riga è
-   trattata come nome senza punteggio (→ stima). Comportamento definito, non un crash.
+3. **Ambiguità virgole nel nome** (es. "Rossi, Mario"): risolto alla radice dalla regex
+   nel JS. La virgola separa il punteggio SOLO se si trova alla fine della riga ed è seguita
+   esclusivamente da cifre numeriche (es. "Rossi, Mario, 1500" → Nome: "Rossi, Mario", Punti:
+   1500). In tutti gli altri casi — inclusa la presenza di spazi e altre parole dopo la
+   virgola — l'intera riga viene preservata integralmente come nome del giocatore. Il backend
+   `normalizza_giocatore_manuale` resta comunque la rete di sicurezza finale.
