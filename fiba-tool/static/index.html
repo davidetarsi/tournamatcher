@@ -14,7 +14,7 @@ main{max-width:960px;margin:20px auto;padding:0 16px}
 table{border-collapse:collapse;width:100%}
 td,th{padding:6px 8px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
 .badge{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:3px}
-.verde{background:#2e7d32}.giallo{background:#f9a825}.rosso{background:#c62828}.arancione{background:#e67e22}
+.verde{background:#2e7d32}.giallo{background:#f9a825}.rosso{background:#c62828}.arancione{background:#e67e22}.blu{background:#2b6cb0}
 .avviso{background:#fff3cd;border:1px solid #ffe08a;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:14px}
 .errore{background:#fdecea;border:1px solid #f5c6cb;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:14px}
 #griglia td{border:1px solid #ddd;text-align:center;padding:2px}
@@ -39,8 +39,9 @@ label{font-size:14px}
     <h3 id="titolo-form">Nuova squadra</h3>
     <div id="errore-squadra" class="errore" hidden></div>
     <label>Nome squadra <input type="text" id="nome-squadra"></label>
-    <label>URL profili giocatori (uno per riga, da play.fiba3x3.com)
+    <label>Profili giocatori — un URL play.fiba3x3.com per riga, oppure "Nome,punteggio" per un giocatore non su FIBA (senza punteggio = stimato dalla media)
       <textarea id="urls-giocatori" rows="3"></textarea></label>
+    <p style="font-size:13px;color:#666;margin:2px 0 0">Il punteggio manuale va sulla stessa scala dei punti FIBA (tipicamente migliaia–decine di migliaia).</p>
     <p>Disponibilità (spunta quando la squadra PUÒ giocare — le caselle nascono vuote):</p>
     <table id="griglia"></table>
     <button class="azione" id="tutto-disponibile" type="button">Tutto disponibile</button>
@@ -119,8 +120,9 @@ async function carica() {
 
 function classeBadge(g) {
   const st = g.fetch_status || '';
-  // Arancione = punteggio stimato (media del pool), non confermato da FIBA.
-  if (st.startsWith('ok: N/A') || st.startsWith('ok: media stimata')) return 'arancione';
+  if (st.startsWith('manuale (')) return 'blu';        // punteggio manuale fisso
+  if (st.startsWith('ok: N/A') || st.startsWith('ok: media stimata')
+      || st.startsWith('manuale: N/A')) return 'arancione';  // stimato / da stimare
   if (!g.fetched_at || st !== 'ok') return 'rosso';
   return g.fetched_at.slice(0, 10) === new Date().toISOString().slice(0, 10)
     ? 'verde' : 'giallo';
@@ -167,20 +169,36 @@ $('#salva-squadra').onclick = async () => {
   const griglia = Array.from({length: config.num_giorni}, (_, g) =>
     Array.from({length: config.num_partite_giorno}, (_, s) =>
       $(`#griglia input[data-g="${g}"][data-s="${s}"]`).checked ? 1 : 0));
-  const urls = $('#urls-giocatori').value.split('\n')
+  const righe = $('#urls-giocatori').value.split('\n')
     .map(u => u.trim()).filter(Boolean);
   const esistente = modificaId && squadre.find(s => s.id === modificaId);
+  const giocatori = righe.map(riga => {
+    if (riga.includes('play.fiba3x3.com/players/')) {
+      // riga URL FIBA: riusa l'oggetto esistente per non perdere il fetch già fatto
+      const vecchio = esistente && esistente.giocatori.find(g => g.url === riga);
+      return vecchio || {url: riga, nome: '', ranking_points: null,
+                         fetch_status: 'mai', fetched_at: null};
+    }
+    // riga manuale "Nome,punteggio": punteggio estratto solo se cifre in coda alla riga.
+    // Il backend normalizza fetch_status/ranking_points; qui basta url vuoto + best-effort.
+    // IMPORTANTE: ricostruiamo SEMPRE da zero, NON riusiamo l'oggetto manuale esistente
+    // per nome. Un giocatore manuale non ha stato nascosto da preservare: il numero fisso
+    // viaggia nel testo ("Nome,N"), la stima viene deliberatamente scartata (serializzata
+    // come solo "Nome") per rifluttuare col pool. Riusare il vecchio oggetto recupererebbe
+    // il ranking_points stimato momentaneo e lo congelerebbe a "manuale (N)" al salvataggio,
+    // reintroducendo il bug del round-trip che questa feature risolve.
+    const m = riga.match(/^(.*?)(?:\s*,\s*(\d+))?$/);
+    return {url: '', nome: (m[1] || '').trim(),
+            ranking_points: m[2] ? parseInt(m[2], 10) : null,
+            fetch_status: 'manuale', fetched_at: null};
+  });
   const corpo = {
     nome: $('#nome-squadra').value.trim(),
-    giocatori: urls.map(u => {
-      const vecchio = esistente && esistente.giocatori.find(g => g.url === u);
-      return vecchio || {url: u, nome: '', ranking_points: null,
-                         fetch_status: 'mai', fetched_at: null};
-    }),
+    giocatori,
     disponibilita: griglia,
   };
   try {
-    if (!corpo.nome || !urls.length) throw new Error('Servono nome e almeno un URL giocatore');
+    if (!corpo.nome || !giocatori.length) throw new Error('Servono nome e almeno un giocatore');
     if (modificaId) await api('/squadre/' + modificaId,
       {method: 'PUT', body: JSON.stringify(corpo)});
     else await api('/squadre', {method: 'POST', body: JSON.stringify(corpo)});
@@ -192,12 +210,19 @@ $('#salva-squadra').onclick = async () => {
   }
 };
 
+function serializzaGiocatore(g) {
+  if ((g.url || '').trim()) return g.url;                          // FIBA -> URL
+  const st = g.fetch_status || '';
+  if (st.startsWith('manuale (')) return `${g.nome},${g.ranking_points}`;  // manuale fisso
+  return g.nome;   // manuale stimato / da stimare -> solo nome: continua a fluttuare
+}
+
 function modifica(id) {
   const s = squadre.find(x => x.id === id);
   modificaId = id;
   $('#titolo-form').textContent = 'Modifica: ' + s.nome;
   $('#nome-squadra').value = s.nome;
-  $('#urls-giocatori').value = s.giocatori.map(g => g.url).join('\n');
+  $('#urls-giocatori').value = s.giocatori.map(serializzaGiocatore).join('\n');
   renderGriglia(s.disponibilita);
   $('#annulla-modifica').hidden = false;
 }
