@@ -228,10 +228,11 @@ def test_media_non_ristima_i_manuali_con_numero():
         {"giocatori": [{"ranking_points": 500, "fetch_status": "ok"}]},
         {"giocatori": [{"ranking_points": 1500, "fetch_status": "manuale (1500)"}]},
     ]}
-    app.applica_fallback_medio(dati)
+    aggiornati = app.applica_fallback_medio(dati)
     manuale = dati["squadre"][1]["giocatori"][0]
     assert manuale["ranking_points"] == 1500            # NON ristimato
     assert manuale["fetch_status"] == "manuale (1500)"
+    assert aggiornati == 0                              # nessun giocatore ri-stimato
 
 
 def test_fetch_salta_i_giocatori_manuali(client, monkeypatch):
@@ -412,6 +413,12 @@ a:
     }
     // riga manuale "Nome,punteggio": punteggio estratto solo se cifre in coda alla riga.
     // Il backend normalizza fetch_status/ranking_points; qui basta url vuoto + best-effort.
+    // IMPORTANTE: ricostruiamo SEMPRE da zero, NON riusiamo l'oggetto manuale esistente
+    // per nome. Un giocatore manuale non ha stato nascosto da preservare: il numero fisso
+    // viaggia nel testo ("Nome,N"), la stima viene deliberatamente scartata (serializzata
+    // come solo "Nome") per rifluttuare col pool. Riusare il vecchio oggetto recupererebbe
+    // il ranking_points stimato momentaneo e lo congelerebbe a "manuale (N)" al salvataggio,
+    // reintroducendo il bug del round-trip che questa feature risolve.
     const m = riga.match(/^(.*?)(?:\s*,\s*(\d+))?$/);
     return {url: '', nome: (m[1] || '').trim(),
             ranking_points: m[2] ? parseInt(m[2], 10) : null,
