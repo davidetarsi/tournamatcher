@@ -63,6 +63,7 @@ def lista_squadre():
 def crea_squadra(squadra: SquadraIn):
     dati = leggi_squadre()
     nuova = squadra.model_dump()
+    normalizza_manuali(nuova["giocatori"])
     nuova["id"] = uuid.uuid4().hex[:8]
     nuova["da_riconfermare"] = False
     dati["squadre"].append(nuova)
@@ -75,8 +76,9 @@ def aggiorna_squadra(sid: str, squadra: SquadraIn):
     dati = leggi_squadre()
     for i, s in enumerate(dati["squadre"]):
         if s["id"] == sid:
-            dati["squadre"][i] = {**squadra.model_dump(), "id": sid,
-                                  "da_riconfermare": False}
+            aggiornata = {**squadra.model_dump(), "id": sid, "da_riconfermare": False}
+            normalizza_manuali(aggiornata["giocatori"])
+            dati["squadre"][i] = aggiornata
             save_json(SQUADRE, dati)
             return dati["squadre"][i]
     raise HTTPException(404, "Squadra non trovata")
@@ -145,6 +147,37 @@ def avvia_fetch(squadra: Optional[str] = None):
     threading.Thread(target=_esegui_fetch, args=(cartella, ids),
                      daemon=True).start()
     return {"job_id": job_id}
+
+
+def normalizza_giocatore_manuale(g):
+    """Rete di sicurezza per un giocatore manuale (url vuoto): valida ranking_points a
+    int > 0 oppure None, e imposta un fetch_status coerente, indipendentemente da cosa
+    manda il frontend.
+      int > 0 -> ranking_points = N, fetch_status = "manuale (N)"     (punteggio fisso)
+      altro   -> ranking_points = None, fetch_status = "manuale: N/A" (verrà stimato)
+    Muta g in place; ritorna g."""
+    raw = g.get("ranking_points")
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        n = None
+    if n is not None and n > 0:
+        g["ranking_points"] = n
+        g["fetch_status"] = f"manuale ({n})"
+    else:
+        g["ranking_points"] = None
+        g["fetch_status"] = "manuale: N/A"
+    g["fetched_at"] = None
+    return g
+
+
+def normalizza_manuali(giocatori):
+    """Applica normalizza_giocatore_manuale a ogni giocatore con url vuoto (manuale).
+    I giocatori FIBA (url non vuoto) restano intatti. Muta la lista in place."""
+    for g in giocatori:
+        if not (g.get("url") or "").strip():
+            normalizza_giocatore_manuale(g)
+    return giocatori
 
 
 def applica_fallback_medio(dati):

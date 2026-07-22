@@ -252,3 +252,63 @@ def test_fetch_0_punti_marcato_na_poi_media(client, monkeypatch):
     # poi applica_fallback_medio lo trasforma in media del pool (600)
     assert giocatore_a["ranking_points"] == 600
     assert giocatore_a["fetch_status"] == "ok: media stimata (600)"
+
+
+def test_normalizza_manuale_con_numero():
+    import app
+    g = {"url": "", "nome": "Mario", "ranking_points": 1500,
+         "fetch_status": "manuale", "fetched_at": "vecchio"}
+    app.normalizza_giocatore_manuale(g)
+    assert g["ranking_points"] == 1500
+    assert g["fetch_status"] == "manuale (1500)"
+    assert g["fetched_at"] is None
+
+
+def test_normalizza_manuale_senza_numero_valido():
+    import app
+    for raw in [None, "", "abc", -5, 0, "12x"]:
+        g = {"url": "", "nome": "Mario", "ranking_points": raw,
+             "fetch_status": "manuale", "fetched_at": None}
+        app.normalizza_giocatore_manuale(g)
+        assert g["ranking_points"] is None, raw
+        assert g["fetch_status"] == "manuale: N/A", raw
+
+
+def test_normalizza_manuale_accetta_stringa_di_cifre():
+    import app
+    g = {"url": "", "nome": "M", "ranking_points": "1500",
+         "fetch_status": "manuale", "fetched_at": None}
+    app.normalizza_giocatore_manuale(g)
+    assert g["ranking_points"] == 1500
+    assert g["fetch_status"] == "manuale (1500)"
+
+
+def test_normalizza_manuali_lascia_intatti_i_fiba():
+    import app
+    giocatori = [
+        {"url": "https://play.fiba3x3.com/players/x", "nome": "F",
+         "ranking_points": 900, "fetch_status": "ok", "fetched_at": "t"},
+        {"url": "", "nome": "M", "ranking_points": 1500,
+         "fetch_status": "manuale", "fetched_at": None},
+    ]
+    app.normalizza_manuali(giocatori)
+    assert giocatori[0]["fetch_status"] == "ok"       # FIBA intatto
+    assert giocatori[0]["ranking_points"] == 900
+    assert giocatori[1]["fetch_status"] == "manuale (1500)"
+
+
+def test_crea_e_modifica_squadra_normalizzano_i_manuali(client):
+    corpo = {"nome": "T", "disponibilita": [], "giocatori": [
+        {"url": "", "nome": "Mario", "ranking_points": 1500,
+         "fetch_status": "manuale", "fetched_at": None}]}
+    sid = client.post("/api/squadre", json=corpo).json()["id"]
+    g = client.get("/api/squadre").json()["squadre"][0]["giocatori"][0]
+    assert g["fetch_status"] == "manuale (1500)" and g["ranking_points"] == 1500
+
+    # in modifica un manuale senza numero torna N/A
+    corpo2 = {"nome": "T", "disponibilita": [], "giocatori": [
+        {"url": "", "nome": "Mario", "ranking_points": None,
+         "fetch_status": "manuale", "fetched_at": None}]}
+    client.put(f"/api/squadre/{sid}", json=corpo2)
+    g = client.get("/api/squadre").json()["squadre"][0]["giocatori"][0]
+    assert g["fetch_status"] == "manuale: N/A" and g["ranking_points"] is None
