@@ -111,8 +111,22 @@ punti FIBA (tipicamente migliaia–decine di migliaia)"*.
   2 (se presente) diventa il `punteggio_raw`. Costruisce poi un giocatore manuale (`url = ""`)
   con un marcatore provvisorio, che il backend normalizzerà al salvataggio via
   `normalizza_giocatore_manuale` (rete di sicurezza: il punteggio finisce comunque validato
-  a int > 0 o None). In modifica, un giocatore manuale esistente viene ri-serializzato come
-  `nome,punteggio` nella textarea.
+  a int > 0 o None).
+- **Re-serializzazione in modifica (context-aware, preserva l'intento).** Quando si riapre
+  una squadra in modifica, il popolamento della textarea deve preservare l'intento originale,
+  non il valore momentaneo:
+  - giocatore con `url` non vuoto → ri-serializzato come il suo **URL** (giocatore FIBA, anche
+    se attualmente stimato: ha un URL, quindi resta URL e verrà rifetchato);
+  - giocatore con `url` vuoto e `fetch_status` che inizia con `"manuale ("` (punteggio fisso
+    inserito a mano) → ri-serializzato come `"nome,punteggio"`;
+  - giocatore con `url` vuoto e `fetch_status` `"manuale: N/A"` **o** `"ok: media stimata (N)"`
+    (intento originale: "stimalo") → ri-serializzato come **solo `"nome"`**, omettendo il
+    punteggio stimato momentaneo, così al salvataggio successivo torna `"manuale: N/A"` e
+    continua a fluttuare con la media del pool.
+
+  Senza questa distinzione, un giocatore salvato "da stimare" verrebbe silenziosamente
+  congelato al valore stimato corrente la prima volta che si riapre e si risalva la squadra
+  (per un motivo qualsiasi, es. aggiungere un altro giocatore), perdendo l'intento dinamico.
 - **Badge** (`classeBadge`): nuovo ramo **blu** per `fetch_status` che inizia con
   `"manuale"` (con numero). I manuali-senza-numero diventano `"ok: media stimata"` → restano
   arancioni. Ordine dei rami: blu prima del controllo rosso (come già fatto per l'arancione).
@@ -146,6 +160,13 @@ punti FIBA (tipicamente migliaia–decine di migliaia)"*.
 **Verifica UI (controller, browser reale):** squadra con tre righe — un URL FIBA, un
 `Nome,1500`, un `Nome` senza numero — mostra badge verde/arancione (a seconda del fetch),
 blu, arancione (stimato). Promemoria di scala presente.
+
+**Verifica round-trip (controller, browser reale) — preservazione dell'intento:** salvare
+un giocatore manuale-senza-numero (che diventa `"ok: media stimata (N)"`), riaprire la
+squadra in modifica e risalvarla senza toccare quel giocatore → il giocatore resta stimato
+(`"manuale: N/A"` → rifluttua), NON diventa `"manuale (N)"` hardcoded. Verificabile anche
+lato dato: dopo il ciclo modifica→salva, il suo `fetch_status` non inizia con `"manuale ("`.
+Viceversa, un manuale-con-numero (`"manuale (1500)"`) risalvato resta a 1500.
 
 **Smoke test Playwright esistente:** resta verde (nessuna regressione sul percorso felice).
 
