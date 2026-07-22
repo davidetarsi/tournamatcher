@@ -312,3 +312,60 @@ def test_crea_e_modifica_squadra_normalizzano_i_manuali(client):
     client.put(f"/api/squadre/{sid}", json=corpo2)
     g = client.get("/api/squadre").json()["squadre"][0]["giocatori"][0]
     assert g["fetch_status"] == "manuale: N/A" and g["ranking_points"] is None
+
+
+def test_media_conta_i_manuali_con_numero():
+    import app
+    dati = {"squadre": [
+        {"giocatori": [{"ranking_points": 1000, "fetch_status": "manuale (1000)"}]},
+        {"giocatori": [{"ranking_points": None, "fetch_status": "manuale: N/A"}]},
+    ]}
+    aggiornati = app.applica_fallback_medio(dati)
+    assert aggiornati == 1
+    stimato = dati["squadre"][1]["giocatori"][0]
+    assert stimato["ranking_points"] == 1000            # media = solo il 1000 manuale
+    assert stimato["fetch_status"] == "ok: media stimata (1000)"
+
+
+def test_media_non_ristima_i_manuali_con_numero():
+    import app
+    dati = {"squadre": [
+        {"giocatori": [{"ranking_points": 500, "fetch_status": "ok"}]},
+        {"giocatori": [{"ranking_points": 1500, "fetch_status": "manuale (1500)"}]},
+    ]}
+    aggiornati = app.applica_fallback_medio(dati)
+    manuale = dati["squadre"][1]["giocatori"][0]
+    assert manuale["ranking_points"] == 1500            # NON ristimato
+    assert manuale["fetch_status"] == "manuale (1500)"
+    assert aggiornati == 0                              # nessun giocatore ri-stimato
+
+
+def test_fetch_salta_i_giocatori_manuali(client, monkeypatch):
+    import fiba_client
+    client.post("/api/squadre", json={"nome": "Mix", "disponibilita": [], "giocatori": [
+        {"url": "https://play.fiba3x3.com/players/u1", "nome": "", "ranking_points": None,
+         "fetch_status": "mai", "fetched_at": None},
+        {"url": "", "nome": "Manuale", "ranking_points": 1500,
+         "fetch_status": "manuale", "fetched_at": None}]})
+    urls_fetchate = []
+
+    def finto(urls, session=None, pausa=None, on_progress=None):
+        urls_fetchate.extend(urls)
+        return [{"url": u, "ok": True,
+                 "dati": {"id": "x", "nome": "R", "ranking_points": 800,
+                          "fetched_at": "2026-07-22T00:00:00+00:00"}} for u in urls]
+
+    monkeypatch.setattr(fiba_client, "fetch_team_players", finto)
+    job = client.post("/api/fetch").json()["job_id"]
+    for _ in range(60):
+        st = client.get(f"/api/jobs/{job}/status").json()
+        if st.get("stato") in ("completato", "errore"):
+            break
+        time.sleep(0.25)
+    assert st["stato"] == "completato"
+    # solo l'URL è stato interrogato, il manuale è stato saltato
+    assert urls_fetchate == ["https://play.fiba3x3.com/players/u1"]
+    giocatori = client.get("/api/squadre").json()["squadre"][0]["giocatori"]
+    manuale = [g for g in giocatori if g["nome"] == "Manuale"][0]
+    assert manuale["fetch_status"] == "manuale (1500)"  # intatto, non errore
+    assert manuale["ranking_points"] == 1500

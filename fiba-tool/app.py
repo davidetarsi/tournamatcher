@@ -189,7 +189,9 @@ def applica_fallback_medio(dati):
     punteggio nel pool). Muta `dati` in place; ritorna il numero di aggiornati."""
     reali = [g["ranking_points"]
              for s in dati["squadre"] for g in s["giocatori"]
-             if g.get("fetch_status") == "ok" and (g.get("ranking_points") or 0) > 0]
+             if (g.get("fetch_status") == "ok"
+                 or (g.get("fetch_status") or "").startswith("manuale"))
+             and (g.get("ranking_points") or 0) > 0]
     if not reali:
         return 0
     media = round(sum(reali) / len(reali))
@@ -197,7 +199,8 @@ def applica_fallback_medio(dati):
     for s in dati["squadre"]:
         for g in s["giocatori"]:
             st = g.get("fetch_status") or ""
-            if st.startswith("ok: N/A") or st.startswith("ok: media stimata"):
+            if (st.startswith("ok: N/A") or st.startswith("ok: media stimata")
+                    or st.startswith("manuale: N/A")):
                 g["ranking_points"] = media
                 g["fetch_status"] = f"ok: media stimata ({media})"
                 aggiornati += 1
@@ -215,9 +218,11 @@ def _esegui_fetch(cartella, ids):
             dati = leggi_squadre()  # riletto a ogni giro: minimizza le finestre di conflitto
             squadra = next((s for s in dati["squadre"] if s["id"] == sid), None)
             if squadra:
+                fetchabili = [g for g in squadra["giocatori"]
+                              if (g.get("url") or "").strip()]
                 risultati = fiba_client.fetch_team_players(
-                    [g["url"] for g in squadra["giocatori"]], sessione)
-                for g, r in zip(squadra["giocatori"], risultati):
+                    [g["url"] for g in fetchabili], sessione)
+                for g, r in zip(fetchabili, risultati):
                     if r["ok"]:
                         g.update(r["dati"])
                         # 0 punti = giocatore non in classifica FIBA: marcato N/A,
