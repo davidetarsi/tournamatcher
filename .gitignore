@@ -29,3 +29,6 @@ docker-compose.override.yml
 
 # Note di lavoro locali degli agenti (superpowers)
 .superpowers/
+
+# Documenti interni di sicurezza: solo in locale
+tournament_roadmap_*security*.md

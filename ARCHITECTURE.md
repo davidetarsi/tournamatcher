@@ -2,13 +2,13 @@
 
 ## System overview
 
-Tre servizi, un solo `git push` non ancora automatizzato (TODO):
+Tre servizi, deploy automatico a ogni `git push` su `main` (vedi [Deploy](#deploy)):
 
 ```
-Browser (Next.js on Vercel)
+Browser (Next.js su Cloudflare Pages)
   │
   ├── legge Firestore direttamente (Firebase Client SDK)
-  └── scrive solo via FastAPI (Admin SDK, Docker su Railway/Render)
+  └── scrive solo via FastAPI (Admin SDK, Docker su Railway)
                     │
                     └── Firestore (Firebase)
                               │
@@ -99,18 +99,32 @@ num_giorni × num_slots_per_giorno × 2 == num_squadre × (squadre_per_girone - 
 Se questo non vale, il solver CP-SAT non trova una soluzione valida.
 Il wizard di creazione torneo calcola questa formula e mostra i valori possibili prima di confermare.
 
+**Limite noto:** il solver (`generate_schedule` in `backend/scheduler.py`) usa `AddAllDifferent`
+su tutte le partite, cioè **una partita per slot**. Il campo `num_campi` dello schema viene
+raccolto dal wizard ma il solver non lo usa ancora: più campi in parallelo non sono supportati.
+
 ## Slug routing
 
 I tornei si raggiungono via slug (`/t/my-tournament/`).
 La collection `tournament_slugs/{slug}` contiene `{tournament_id: "..."}` e si legge
 pubblicamente (rules: `allow read: if true`).
 
-Il hook `useSlugResolution` in `frontend/hooks/` risolve slug → ID e poi carica i dati.
+Il hook `useSlugResolution` in `frontend/lib/hooks/` risolve slug → ID e poi carica i dati.
 
-## Deploy checklist (finché non è automatizzato)
+## Registrazione squadre
 
-1. `git push` → Vercel deploya il frontend automaticamente
-2. Backend: rebuild Docker image → push su Registry → redeploy su Railway/Render
-3. Rules: `firebase deploy --only firestore:rules` (richiede Firebase CLI autenticato)
+La registrazione è pubblica, limitata solo dal tetto `max_teams` dello schema
+(il sistema di codici invito è stato rimosso). Il conteggio e l'inserimento avvengono
+in una transazione Firestore, così due iscrizioni simultanee non superano il tetto.
 
-Step 3 è l'unico che richiede intervento manuale locale. Obiettivo: metterlo in CI.
+## Deploy
+
+Ogni push su `main` deploya tutto in automatico:
+
+| Componente | Servizio | Trigger |
+|---|---|---|
+| Frontend | Cloudflare Pages (`@cloudflare/next-on-pages`, root `frontend/`) | ogni push su `main` |
+| Backend | Railway (Docker, root `backend/`, config in `backend/railway.json`) | ogni push su `main` |
+| Firestore rules | GitHub Actions (`.github/workflows/deploy-rules.yml`) | push su `main` che modifica `firestore.rules` |
+
+Setup iniziale, variabili d'ambiente e secret: [docs/deployment-setup.md](docs/deployment-setup.md).
