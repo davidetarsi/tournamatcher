@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FIBA Tool</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#f4f5f7;color:#222}
+header{background:#1a2b4a;color:#fff;padding:12px 20px;display:flex;gap:16px;align-items:center}
+header button{background:none;border:none;color:#cdd6e4;font-size:15px;cursor:pointer;padding:6px 10px}
+header button.attiva{color:#fff;border-bottom:2px solid #ffb300}
+main{max-width:960px;margin:20px auto;padding:0 16px}
+.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+table{border-collapse:collapse;width:100%}
+td,th{padding:6px 8px;border-bottom:1px solid #eee;text-align:left;font-size:14px}
+.badge{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:3px}
+.verde{background:#2e7d32}.giallo{background:#f9a825}.rosso{background:#c62828}.arancione{background:#e67e22}.blu{background:#2b6cb0}
+.avviso{background:#fff3cd;border:1px solid #ffe08a;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:14px}
+.errore{background:#fdecea;border:1px solid #f5c6cb;padding:8px 12px;border-radius:6px;margin:8px 0;font-size:14px}
+#griglia td{border:1px solid #ddd;text-align:center;padding:2px}
+button.azione{background:#1a2b4a;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;margin:4px 4px 4px 0}
+button.azione:disabled{opacity:.5;cursor:not-allowed}
+button.link{background:none;border:none;color:#1a2b4a;cursor:pointer;text-decoration:underline;padding:2px}
+input[type=text],textarea{width:100%;box-sizing:border-box;padding:6px;margin:4px 0}
+input[type=number]{width:90px;padding:6px;margin:4px}
+label{font-size:14px}
+</style>
+</head>
+<body>
+<header>
+  <strong>FIBA Tool</strong>
+  <button data-vista="squadre" class="attiva">Squadre</button>
+  <button data-vista="parametri">Parametri e generazione</button>
+  <button data-vista="risultati">Risultati</button>
+</header>
+<main>
+<section id="vista-squadre">
+  <div class="card">
+    <h3 id="titolo-form">Nuova squadra</h3>
+    <div id="errore-squadra" class="errore" hidden></div>
+    <label>Nome squadra <input type="text" id="nome-squadra"></label>
+    <label>Profili giocatori — un URL play.fiba3x3.com per riga, oppure "Nome,punteggio" per un giocatore non su FIBA (senza punteggio = stimato dalla media)
+      <textarea id="urls-giocatori" rows="3"></textarea></label>
+    <p style="font-size:13px;color:#666;margin:2px 0 0">Il punteggio manuale va sulla stessa scala dei punti FIBA (tipicamente migliaia–decine di migliaia).</p>
+    <p>Disponibilità (spunta quando la squadra PUÒ giocare — le caselle nascono vuote):</p>
+    <table id="griglia"></table>
+    <button class="azione" id="tutto-disponibile" type="button">Tutto disponibile</button>
+    <button class="azione" id="salva-squadra" type="button">Salva squadra</button>
+    <button class="azione" id="annulla-modifica" type="button" hidden>Annulla</button>
+  </div>
+  <div class="card">
+    <h3>Squadre</h3>
+    <div id="avviso-riconferma" class="avviso" hidden></div>
+    <table id="tabella-squadre"></table>
+  </div>
+</section>
+<section id="vista-parametri" hidden>
+  <div class="card">
+    <h3>Parametri torneo</h3>
+    <label>Gironi <input type="number" id="num_gironi" min="1"></label>
+    <label>Giorni <input type="number" id="num_giorni" min="1"></label>
+    <label>Partite al giorno <input type="number" id="num_partite_giorno" min="1"></label>
+    <div id="esito-validazione" class="avviso" hidden></div>
+    <button class="azione" id="salva-config" type="button">Salva parametri</button>
+  </div>
+  <div class="card">
+    <h3>Azioni</h3>
+    <div id="avviso-incompleti" class="avviso" hidden></div>
+    <button class="azione" id="btn-fetch-tutti" type="button">Aggiorna punti di tutte le squadre</button>
+    <button class="azione" id="btn-genera" type="button">Genera calendario</button>
+    <p id="stato-job"></p>
+  </div>
+</section>
+<section id="vista-risultati" hidden>
+  <div class="card"><h3>Esecuzioni</h3><div id="lista-runs"></div></div>
+  <div class="card" id="dettaglio-run" hidden></div>
+</section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let config = null, squadre = [], modificaId = null;
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+async function api(percorso, opzioni) {
+  const r = await fetch('/api' + percorso, opzioni ? {
+    headers: {'Content-Type': 'application/json'}, ...opzioni } : undefined);
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { msg = (await r.json()).detail || msg; } catch (e) {}
+    throw new Error(msg);
+  }
+  const testo = await r.text();
+  try { return JSON.parse(testo); } catch (e) { return testo; }
+}
+
+function mostra(vista) {
+  document.querySelectorAll('main > section').forEach(s => s.hidden = true);
+  $('#vista-' + vista).hidden = false;
+  document.querySelectorAll('header button').forEach(
+    b => b.classList.toggle('attiva', b.dataset.vista === vista));
+  if (vista === 'risultati') caricaRuns();
+}
+document.querySelectorAll('header button').forEach(
+  b => b.onclick = () => mostra(b.dataset.vista));
+
+async function carica() {
+  config = await api('/config');
+  ['num_gironi', 'num_giorni', 'num_partite_giorno'].forEach(
+    k => $('#' + k).value = config[k]);
+  squadre = (await api('/squadre')).squadre;
+  renderSquadre();
+  renderGriglia();
+  validaParametri();
+}
+
+function classeBadge(g) {
+  const st = g.fetch_status || '';
+  if (st.startsWith('manuale (')) return 'blu';        // punteggio manuale fisso
+  if (st.startsWith('ok: N/A') || st.startsWith('ok: media stimata')
+      || st.startsWith('manuale: N/A')) return 'arancione';  // stimato / da stimare
+  if (!g.fetched_at || st !== 'ok') return 'rosso';
+  return g.fetched_at.slice(0, 10) === new Date().toISOString().slice(0, 10)
+    ? 'verde' : 'giallo';
+}
+
+function renderSquadre() {
+  const daRiconfermare = squadre.filter(s => s.da_riconfermare);
+  $('#avviso-riconferma').hidden = daRiconfermare.length === 0;
+  $('#avviso-riconferma').textContent = daRiconfermare.length ?
+    'Da riconfermare (i parametri sono cambiati, i nuovi slot NON sono disponibili): '
+    + daRiconfermare.map(s => s.nome).join(', ') : '';
+  const incompleti = s => s.giocatori.filter(g => (g.ranking_points || 0) > 0).length < 3;
+  $('#tabella-squadre').innerHTML =
+    '<tr><th>Nome</th><th>Punti</th><th>Giocatori</th><th></th></tr>' +
+    squadre.map(s => `<tr>
+      <td>${escapeHtml(s.nome)}${s.da_riconfermare ? ' ⚠️' : ''}${incompleti(s) ? ' (dati incompleti)' : ''}</td>
+      <td>${s.punteggio}</td>
+      <td>${s.giocatori.map(g =>
+        `<span class="badge ${classeBadge(g)}" title="${escapeHtml(g.fetch_status || 'mai')}"></span>${escapeHtml(g.nome || g.url.split('/').pop())}`
+      ).join(' · ')}</td>
+      <td><button class="link" onclick="aggiornaSquadra('${escapeHtml(s.id)}', this)">Aggiorna punti</button>
+          <button class="link" onclick="modifica('${escapeHtml(s.id)}')">Modifica</button>
+          <button class="link" onclick="elimina('${escapeHtml(s.id)}')">Elimina</button></td>
+    </tr>`).join('');
+}
+
+function renderGriglia(valori) {
+  let righe = '<tr><th></th>' + Array.from({length: config.num_partite_giorno},
+    (_, s) => `<th>Slot ${s + 1}</th>`).join('') + '</tr>';
+  for (let g = 0; g < config.num_giorni; g++) {
+    righe += `<tr><th>Giorno ${g + 1}</th>` +
+      Array.from({length: config.num_partite_giorno}, (_, s) =>
+        `<td><input type="checkbox" data-g="${g}" data-s="${s}"
+         ${valori && valori[g] && valori[g][s] ? 'checked' : ''}></td>`).join('') + '</tr>';
+  }
+  $('#griglia').innerHTML = righe;
+}
+
+$('#tutto-disponibile').onclick = () =>
+  document.querySelectorAll('#griglia input').forEach(c => c.checked = true);
+
+$('#salva-squadra').onclick = async () => {
+  $('#errore-squadra').hidden = true;
+  const griglia = Array.from({length: config.num_giorni}, (_, g) =>
+    Array.from({length: config.num_partite_giorno}, (_, s) =>
+      $(`#griglia input[data-g="${g}"][data-s="${s}"]`).checked ? 1 : 0));
+  const righe = $('#urls-giocatori').value.split('\n')
+    .map(u => u.trim()).filter(Boolean);
+  const esistente = modificaId && squadre.find(s => s.id === modificaId);
+  const giocatori = righe.map(riga => {
+    if (riga.includes('play.fiba3x3.com/players/')) {
+      // riga URL FIBA: riusa l'oggetto esistente per non perdere il fetch già fatto
+      const vecchio = esistente && esistente.giocatori.find(g => g.url === riga);
+      return vecchio || {url: riga, nome: '', ranking_points: null,
+                         fetch_status: 'mai', fetched_at: null};
+    }
+    // riga manuale "Nome,punteggio": punteggio estratto solo se cifre in coda alla riga.
+    // Il backend normalizza fetch_status/ranking_points; qui basta url vuoto + best-effort.
+    // IMPORTANTE: ricostruiamo SEMPRE da zero, NON riusiamo l'oggetto manuale esistente
+    // per nome. Un giocatore manuale non ha stato nascosto da preservare: il numero fisso
+    // viaggia nel testo ("Nome,N"), la stima viene deliberatamente scartata (serializzata
+    // come solo "Nome") per rifluttuare col pool. Riusare il vecchio oggetto recupererebbe
+    // il ranking_points stimato momentaneo e lo congelerebbe a "manuale (N)" al salvataggio,
+    // reintroducendo il bug del round-trip che questa feature risolve.
+    const m = riga.match(/^(.*?)(?:\s*,\s*(\d+))?$/);
+    return {url: '', nome: (m[1] || '').trim(),
+            ranking_points: m[2] ? parseInt(m[2], 10) : null,
+            fetch_status: 'manuale', fetched_at: null};
+  });
+  const corpo = {
+    nome: $('#nome-squadra').value.trim(),
+    giocatori,
+    disponibilita: griglia,
+  };
+  try {
+    if (!corpo.nome || !giocatori.length) throw new Error('Servono nome e almeno un giocatore');
+    if (modificaId) await api('/squadre/' + modificaId,
+      {method: 'PUT', body: JSON.stringify(corpo)});
+    else await api('/squadre', {method: 'POST', body: JSON.stringify(corpo)});
+    annullaModifica();
+    await carica();
+  } catch (e) {
+    $('#errore-squadra').textContent = e.message;
+    $('#errore-squadra').hidden = false;
+  }
+};
+
+function serializzaGiocatore(g) {
+  if ((g.url || '').trim()) return g.url;                          // FIBA -> URL
+  const st = g.fetch_status || '';
+  if (st.startsWith('manuale (')) return `${g.nome},${g.ranking_points}`;  // manuale fisso
+  return g.nome;   // manuale stimato / da stimare -> solo nome: continua a fluttuare
+}
+
+function modifica(id) {
+  const s = squadre.find(x => x.id === id);
+  modificaId = id;
+  $('#titolo-form').textContent = 'Modifica: ' + s.nome;
+  $('#nome-squadra').value = s.nome;
+  $('#urls-giocatori').value = s.giocatori.map(serializzaGiocatore).join('\n');
+  renderGriglia(s.disponibilita);
+  $('#annulla-modifica').hidden = false;
+}
+
+function annullaModifica() {
+  modificaId = null;
+  $('#titolo-form').textContent = 'Nuova squadra';
+  $('#nome-squadra').value = '';
+  $('#urls-giocatori').value = '';
+  renderGriglia();
+  $('#annulla-modifica').hidden = true;
+}
+$('#annulla-modifica').onclick = annullaModifica;
+
+async function elimina(id) {
+  if (confirm('Eliminare la squadra?')) {
+    try {
+      await api('/squadre/' + id, {method: 'DELETE'});
+      await carica();
+    } catch (e) {
+      alert('Errore: ' + e.message);
+    }
+  }
+}
+
+function combinazioniValide(nSquadre, nGironi) {
+  if (nGironi < 1 || nSquadre % nGironi) return [];
+  const slotTotali = nSquadre * (nSquadre / nGironi - 1) / 2;
+  const out = [];
+  for (let g = 1; g <= slotTotali; g++)
+    if (slotTotali % g === 0) out.push([g, slotTotali / g]);
+  return out;
+}
+
+function validaParametri() {
+  const n = squadre.length;
+  const [gir, gio, slot] = ['num_gironi', 'num_giorni', 'num_partite_giorno']
+    .map(k => parseInt($('#' + k).value, 10) || 0);
+  const valide = combinazioniValide(n, gir);
+  const ok = valide.some(([g, s]) => g === gio && s === slot);
+  const box = $('#esito-validazione');
+  box.hidden = ok && n > 0;
+  if (!ok) box.textContent = n === 0 ? 'Aggiungi prima le squadre.' :
+    valide.length === 0 ? `${n} squadre non divisibili in ${gir} gironi uguali.` :
+    'Capacità errata. Combinazioni valide: ' +
+      valide.map(([g, s]) => `${g} giorni × ${s} slot`).join(', ');
+  $('#btn-genera').disabled = !ok;
+  return ok;
+}
+['num_gironi', 'num_giorni', 'num_partite_giorno'].forEach(
+  k => $('#' + k).oninput = validaParametri);
+
+$('#salva-config').onclick = async () => {
+  const corpo = Object.fromEntries(['num_gironi', 'num_giorni', 'num_partite_giorno']
+    .map(k => [k, parseInt($('#' + k).value, 10)]));
+  try {
+    await api('/config', {method: 'PUT', body: JSON.stringify(corpo)});
+    await carica();
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  }
+};
+
+function pollJob(jobId, alTermine, semprealla) {
+  const timer = setInterval(async () => {
+    try {
+      const st = await api('/jobs/' + jobId + '/status');
+      $('#stato-job').textContent = st.stato === 'in_corso' ?
+        `In corso: ${st.fase || ''} ${st.fatti != null ? st.fatti + '/' + st.totale : ''}` :
+        st.stato === 'errore' ? 'Errore: ' + st.errore : 'Job completato';
+      if (st.stato !== 'in_corso') {
+        clearInterval(timer);
+        if (semprealla) semprealla(st);
+        if (alTermine) alTermine(st);
+      }
+    } catch (e) { /* status non ancora scritto: riprova al prossimo giro */ }
+  }, 2000);
+}
+
+async function aggiornaSquadra(id, bottone) {
+  try {
+    if (bottone) bottone.disabled = true;
+    const {job_id} = await api('/fetch?squadra=' + id, {method: 'POST'});
+    mostra('parametri');
+    pollJob(job_id, carica, () => { if (bottone) bottone.disabled = false; });
+  } catch (e) {
+    if (bottone) bottone.disabled = false;
+    alert('Errore: ' + e.message);
+  }
+}
+
+$('#btn-fetch-tutti').onclick = async () => {
+  const bottone = $('#btn-fetch-tutti');
+  try {
+    bottone.disabled = true;
+    const {job_id} = await api('/fetch', {method: 'POST'});
+    pollJob(job_id, carica, () => { bottone.disabled = false; });
+  } catch (e) {
+    bottone.disabled = false;
+    alert('Errore: ' + e.message);
+  }
+};
+
+$('#btn-genera').onclick = async () => {
+  const incompleti = squadre.filter(
+    s => s.giocatori.filter(g => (g.ranking_points || 0) > 0).length < 3);
+  $('#avviso-incompleti').hidden = incompleti.length === 0;
+  if (incompleti.length) $('#avviso-incompleti').textContent =
+    'Attenzione, dati incompleti (si genera comunque): ' +
+    incompleti.map(s => s.nome).join(', ');
+  const bottone = $('#btn-genera');
+  try {
+    bottone.disabled = true;
+    const {job_id} = await api('/genera', {method: 'POST'});
+    pollJob(job_id, () => mostra('risultati'), () => validaParametri());
+  } catch (e) {
+    bottone.disabled = false;
+    $('#stato-job').textContent = 'Errore: ' + e.message;
+  }
+};
+
+async function caricaRuns() {
+  try {
+    const runs = await api('/runs');
+    $('#lista-runs').innerHTML = runs.length === 0 ? 'Nessuna esecuzione.' :
+      runs.map(r => `<p><button class="link" onclick="apriRun('${escapeHtml(r.id)}')">${escapeHtml(r.id)}</button>
+        — ${escapeHtml(r.stato)}${r.stato === 'errore' ? ': ' + escapeHtml(r.errore) : ''}</p>`).join('');
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  }
+}
+
+async function apriRun(id) {
+  try {
+    const c = await api('/runs/' + id + '/calendario');
+    let html = `<h3>${escapeHtml(id)}</h3>
+      <p>Sbilanciamento gironi: <strong>${c.sbilanciamento}</strong> punti —
+      <a href="/api/runs/${encodeURIComponent(id)}/report" target="_blank">report completo</a></p>`;
+    html += '<table><tr><th>Girone</th><th>Punti</th><th>Squadre</th></tr>' +
+      c.gironi.map(g => `<tr><td>${g.numero}</td><td>${g.punteggio_totale}</td>
+        <td>${g.squadre.map(escapeHtml).join(', ')}</td></tr>`).join('') + '</table>';
+    html += '<h4>Calendario</h4><table><tr><th>Giorno</th><th>Slot</th><th>Partita</th><th>Girone</th></tr>';
+    for (const giorno of Object.keys(c.calendario).sort((a, b) => a - b))
+      for (const slot of Object.keys(c.calendario[giorno]).sort((a, b) => a - b))
+        for (const p of c.calendario[giorno][slot])
+          html += `<tr><td>${+giorno + 1}</td><td>${+slot + 1}</td>
+            <td>${escapeHtml(p.squadre[0])} vs ${escapeHtml(p.squadre[1])}</td><td>${p.girone}</td></tr>`;
+    html += '</table>';
+    if (c.warnings.length)
+      html += '<div class="avviso">' + c.warnings.map(escapeHtml).join('<br>') + '</div>';
+    $('#dettaglio-run').innerHTML = html;
+    $('#dettaglio-run').hidden = false;
+  } catch (e) {
+    alert('Errore: ' + e.message);
+  }
+}
+
+carica();
+</script>
+</body>
+</html>
