@@ -1,0 +1,95 @@
+# Tournamatcher
+
+Strumenti per organizzare **tornei di basket 3x3**: iscrizione delle squadre, gironi
+bilanciati, calendario delle partite generato da un solver a vincoli, risultati e classifiche.
+
+Il repository contiene due progetti che condividono lo stesso cuore (il solver
+**OR-Tools CP-SAT** per il calendario) ma hanno scopi diversi:
+
+| Progetto | Cartella | Cos'è | Dove gira |
+|---|---|---|---|
+| **Tournamatcher (piattaforma web)** | `backend/`, `frontend/` | Piattaforma multi-torneo: pagina pubblica del torneo, iscrizione squadre, disponibilità, calendario, risultati e classifiche | Cloud (Cloudflare Pages + Railway + Firebase) |
+| **FIBA Tool** | [`fiba-tool/`](fiba-tool/) | Dashboard locale che forma gironi e calendario usando i **punti ranking reali FIBA 3x3** dei giocatori | Solo in locale, sul tuo computer |
+
+---
+
+## FIBA Tool
+
+Strumento locale (FastAPI + una dashboard HTML) per chi organizza un torneo e vuole seminare
+le squadre in base al loro valore reale: pesca i punteggi da
+[play.fiba3x3.com](https://play.fiba3x3.com), forma i gironi con un seeding a fasce e genera
+il calendario minimizzando le partite consecutive. Accetta anche giocatori non registrati su
+FIBA con punteggio inserito a mano o stimato.
+
+Avvio rapido:
+
+```bash
+cd fiba-tool
+pip install -r requirements.txt
+python3 app.py          # poi apri http://127.0.0.1:8000
+```
+
+Documentazione completa: **[fiba-tool/README.md](fiba-tool/README.md)**.
+
+---
+
+## Tournamatcher — piattaforma web
+
+```
+Browser (Next.js 14, Cloudflare Pages)
+  ├── legge Firestore direttamente (Firebase Client SDK)
+  └── scrive solo tramite l'API FastAPI (Docker su Railway)
+                    ├── Firestore (Firebase Admin SDK)
+                    └── solver CP-SAT per il calendario
+```
+
+- **Frontend** (`frontend/`): Next.js + React + Tailwind. Area admin per creare e gestire i
+  tornei, pagina pubblica per torneo raggiungibile via slug (`/t/<slug>/`).
+- **Backend** (`backend/`): FastAPI. Router per tornei, squadre, calendario e risultati;
+  generazione del calendario con CP-SAT e calcolo delle classifiche.
+- **Dati**: Firestore. Il client non scrive mai direttamente (le rules negano ogni scrittura):
+  tutte le modifiche passano dal backend.
+- **Autenticazione a due livelli**: gli admin entrano con Google (Firebase Auth), le squadre
+  con un PIN che restituisce un token dedicato.
+
+Approfondimenti:
+- [ARCHITECTURE.md](ARCHITECTURE.md): contratti fondamentali, formato degli slot, schema dinamico dei tornei
+- [docs/deployment-setup.md](docs/deployment-setup.md): deploy su Cloudflare Pages + Railway + GitHub Actions
+
+Sviluppo locale:
+
+```bash
+# backend (richiede le credenziali Firebase, vedi docs/deployment-setup.md)
+cd backend && pip install -r requirements.txt && uvicorn main:app --reload
+
+# frontend
+cd frontend && npm install && npm run dev   # http://localhost:3000
+```
+
+---
+
+## Struttura del repository
+
+```
+.
+├── backend/            # API FastAPI della piattaforma (solver, classifiche, auth)
+├── frontend/           # app Next.js della piattaforma
+├── fiba-tool/          # strumento locale con punteggi FIBA reali (progetto a sé)
+├── docs/               # guide di deploy, specifiche e piani di sviluppo
+├── firestore.rules     # regole di sicurezza Firestore (deploy automatico via GitHub Actions)
+├── docker-compose.yml  # avvio locale del backend in container
+└── ARCHITECTURE.md     # architettura della piattaforma
+```
+
+---
+
+## Licenza
+
+Il codice è visibile pubblicamente ma **non è open source**.
+
+- **FIBA Tool** è distribuito con una licenza *source-available* ad uso privato: puoi leggerlo
+  e proporre modifiche, ma non usarlo, copiarlo o distribuirlo senza permesso scritto. Vedi
+  [fiba-tool/LICENSE](fiba-tool/LICENSE).
+- Il resto del repository, salvo diversa indicazione, è © Davide Tarsi, tutti i diritti riservati.
+
+Per richieste: Davide Tarsi — davidetarsi.dev@gmail.com

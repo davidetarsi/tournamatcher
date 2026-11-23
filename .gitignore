@@ -26,3 +26,6 @@ venv/
 .dockerenv
 docker-compose.override.yml
 .worktrees/
+
+# Note di lavoro locali degli agenti (superpowers)
+.superpowers/
