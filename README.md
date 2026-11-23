@@ -83,10 +83,6 @@ cd frontend && npm install && npm run dev   # http://localhost:3000
 Il codice è pubblico ma **non è open source**: tutto il repository è distribuito con la
 [**PolyForm Noncommercial License 1.0.0**](LICENSE).
 
-- ✅ **Consentito** usarlo, modificarlo e condividerlo per **scopi non commerciali**: uso personale,
-  studio, hobby, tornei amatoriali, associazioni no-profit, scuole ed enti pubblici.
-- ❌ **Non consentito** alcun **uso commerciale** senza un accordo scritto con l'autore.
-
 Chi condivide il codice deve includere i termini della licenza e la riga `Required Notice`
 presente nel file [LICENSE](LICENSE).
 
